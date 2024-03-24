@@ -8,7 +8,7 @@ object BatchBase {
     batchAction match {
       case insert: io.cosmospf.load.javaapi.actions.BatchInsertAction => insert.wrapped
       case update: io.cosmospf.load.javaapi.actions.BatchUpdateAction => update.wrapped
-      case unknown                                                   => throw new IllegalArgumentException(s"JDBC DSL doesn't support $unknown")
+      case unknown                                                    => throw new IllegalArgumentException(s"JDBC DSL doesn't support $unknown")
     }
   }
 }
