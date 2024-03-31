@@ -18,7 +18,7 @@
     <logger name="io.gatling.http.engine.response.DefaultStatsProcessor" level="DEBUG"/>
 
     <!--show passed parameters on simulation startup-->
-    <logger name="io.cosmospf.gatling" level="INFO"/>
+    <logger name="org.galaxio.performance" level="INFO"/>
 
     <!--uncomment FILE appender and set suitable root level to write logs into FILE-->
     <!--e.g. <root level="TRACE"> to log all http requests in FILE-->

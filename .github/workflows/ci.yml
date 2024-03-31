@@ -24,7 +24,7 @@ jobs:
           java-version: openjdk@1.17
 
       - name: Test Release
-        run: sbt clean scalafmtCheckAll scalafmtSbtCheck compile coverage "Gatling / testOnly io.cosmospf.load.jdbc.test.DebugTest" test coverageOff
+        run: sbt clean scalafmtCheckAll scalafmtSbtCheck compile coverage "Gatling / testOnly org.galaxio.gatling.jdbc.test.DebugTest" test coverageOff
 
       - name: Coverage Report
         run: sbt coverageReport

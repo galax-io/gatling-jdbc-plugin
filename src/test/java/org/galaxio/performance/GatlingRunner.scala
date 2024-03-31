@@ -1,15 +1,15 @@
-package org.galaxio.performance.jdbc.test
+package org.galaxio.performance
 
 import io.gatling.app.Gatling
 import io.gatling.core.config.GatlingPropertiesBuilder
-import org.galaxio.performance.jdbc.test.KtJdbcDebugTest;
+import org.galaxio.performance.jdbc.test.JdbcDebugTest;
 
 object GatlingRunner {
 
   def main(args: Array[String]): Unit = {
 
     // this is where you specify the class you want to run
-    val simulationClass = classOf[KtJdbcDebugTest].getName
+    val simulationClass = classOf[JdbcDebugTest].getName
 
     val props = new GatlingPropertiesBuilder
     props.simulationClass(simulationClass)
