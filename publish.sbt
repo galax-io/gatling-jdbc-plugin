@@ -5,7 +5,7 @@ ThisBuild / organizationHomepage := Some(url("https://github.com/galax-io"))
 ThisBuild / description          := "Plugin to support JDBC performance testing in Gatling."
 
 ThisBuild / homepage := Some(url("https://github.com/galax-io/gatling-jdbc-plugin"))
-ThisBuild / scmInfo := Some(
+ThisBuild / scmInfo  := Some(
   ScmInfo(
     url("https://github.com/galax-io/gatling-jdbc-plugin"),
     "git@github.com:galax-io/gatling-jdbc-plugin.git",
