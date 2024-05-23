@@ -1,8 +1,8 @@
-import sbt._
+import sbt.*
 
 object Dependencies {
 
-  val gatlingVersion = "3.9.5"
+  val gatlingVersion = "3.10.5"
 
   lazy val gatlingCore: Seq[ModuleID] = Seq(
     "io.gatling" % "gatling-core",
@@ -14,7 +14,7 @@ object Dependencies {
     "io.gatling.highcharts" % "gatling-charts-highcharts",
   ).map(_ % gatlingVersion % "it,test")
 
-  lazy val hikari = "com.zaxxer"     % "HikariCP" % "5.0.1" exclude ("org.slf4j", "slf4j-api")
-  lazy val h2jdbc = "com.h2database" % "h2"       % "2.1.214" % Test
+  lazy val hikari = "com.zaxxer"     % "HikariCP" % "5.1.0" exclude ("org.slf4j", "slf4j-api")
+  lazy val h2jdbc = "com.h2database" % "h2"       % "2.2.224" % Test
 
 }
