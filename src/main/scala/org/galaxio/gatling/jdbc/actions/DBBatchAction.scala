@@ -7,6 +7,7 @@ import io.gatling.core.session.{Expression, Session}
 import io.gatling.core.structure.ScenarioContext
 import io.gatling.core.util.NameGen
 import actions.{BatchAction, BatchInsertAction, BatchUpdateAction}
+import io.gatling.core.stats.StatsEngine
 import org.galaxio.gatling.jdbc.db._
 
 final case class DBBatchAction(
@@ -80,7 +81,7 @@ final case class DBBatchAction(
       ))
       .onFailure(m =>
         batchName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logCrash(session.scenario, session.groups, rn, m)
+          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
           executeNext(
             session,
             ctx.coreComponents.clock.nowMillis,
@@ -94,4 +95,6 @@ final case class DBBatchAction(
         },
       )
   }
+
+  override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }
