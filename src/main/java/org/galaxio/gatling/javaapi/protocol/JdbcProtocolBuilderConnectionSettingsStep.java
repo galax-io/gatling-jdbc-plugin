@@ -1,6 +1,6 @@
 package org.galaxio.gatling.javaapi.protocol;
 
-import scala.compat.java8.DurationConverters;
+import scala.jdk.javaapi.DurationConverters;
 
 import java.time.Duration;
 
