@@ -14,7 +14,7 @@ object Dependencies {
     "io.gatling.highcharts" % "gatling-charts-highcharts",
   ).map(_ % gatlingVersion % "it,test")
 
-  lazy val hikari = "com.zaxxer"     % "HikariCP" % "5.1.0" exclude ("org.slf4j", "slf4j-api")
+  lazy val hikari = "com.zaxxer"     % "HikariCP" % "6.2.1" exclude ("org.slf4j", "slf4j-api")
   lazy val h2jdbc = "com.h2database" % "h2"       % "2.3.232" % Test
 
 }
