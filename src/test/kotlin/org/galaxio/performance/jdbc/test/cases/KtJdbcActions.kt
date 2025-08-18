@@ -40,12 +40,12 @@ object KtJdbcActions {
 
     fun batchTest(): BatchActionBuilder {
         return jdbc("Batch records").batch(
-                insetInto("TEST_TABLE", "ID", "NAME", "FLAG")
+                insertInto("TEST_TABLE", "ID", "NAME", "FLAG")
                         .values(mapOf("ID" to 20, "NAME" to "Test 12", "FLAG" to true)),
-                insetInto("TEST_TABLE", "ID", "NAME")
+                insertInto("TEST_TABLE", "ID", "NAME")
                         .values(mapOf("ID" to 40, "NAME" to "Test 34")),
                 update("TEST_TABLE").set(mapOf("NAME" to "Test5")).where("ID = 2"),
-                insetInto("TT", "ID", "NAME").values(mapOf("ID" to UUID.randomUUID(), "NAME" to "OOO342ff"))
+                insertInto("TT", "ID", "NAME").values(mapOf("ID" to UUID.randomUUID(), "NAME" to "OOO342ff"))
         )
     }
 
