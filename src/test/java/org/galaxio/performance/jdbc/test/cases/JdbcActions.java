@@ -16,6 +16,12 @@ public class JdbcActions {
                                         "CREATE TABLE TT (ID UUID, NAME VARCHAR(64));");
     }
 
+    public static RawSqlActionBuilder createBadTable(){
+        return jdbc("Create table")
+                .rawSql("REATE TABLE TEST_TABLE (ID INT PRIMARY KEY, NAME VARCHAR(64), CREATED_AT DATE DEFAULT now(), flag BOOLEAN DEFAULT false);" +
+                        "CREATE TABLE TT (ID UUID, NAME VARCHAR(64));");
+    }
+
     public static RawSqlActionBuilder createprocedure(){
         return jdbc("Procedure create")
                 .rawSql(

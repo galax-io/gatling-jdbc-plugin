@@ -26,9 +26,8 @@ trait ActionBase {
     // If the result status is KO, mark the session as failed so downstream actions see it
     // Also attach explicit attributes so Java DSL users can read it reliably
     val sessionToUse = if (status == io.gatling.commons.stats.KO)
-      session.markAsFailed.set("jdbcFailed", true).set("successful", false)
-    else session.set("jdbcFailed", false).set("successful", true)
-
+      session.markAsFailed.set("jdbcFailed", true).set("successful", false).set("jdbcErrorMessage", message.getOrElse("Unknown error"))
+    else session.set("jdbcFailed", false).set("successful", true).remove("jdbcErrorMessage").remove("HelterSkelter")
     ctx.coreComponents.statsEngine.logResponse(
       session.scenario,
       session.groups,
@@ -39,6 +38,6 @@ trait ActionBase {
       responseCode,
       message,
     )
-    next ! session.logGroupRequestTimings(sent, received)
+    next ! sessionToUse.logGroupRequestTimings(sent, received)
   }
 }
