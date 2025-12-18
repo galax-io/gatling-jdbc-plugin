@@ -23,6 +23,12 @@ trait ActionBase {
       responseCode: Option[String],
       message: Option[String],
   ): Unit = {
+    // If the result status is KO, mark the session as failed so downstream actions see it
+    // Also attach explicit attributes so Java DSL users can read it reliably
+    val sessionToUse = if (status == io.gatling.commons.stats.KO)
+      session.markAsFailed.set("jdbcFailed", true).set("successful", false)
+    else session.set("jdbcFailed", false).set("successful", true)
+
     ctx.coreComponents.statsEngine.logResponse(
       session.scenario,
       session.groups,
