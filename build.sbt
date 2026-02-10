@@ -4,7 +4,7 @@ lazy val root = (project in file("."))
   .enablePlugins(GitVersioning, GatlingPlugin)
   .settings(
     name                        := "gatling-jdbc-plugin",
-    scalaVersion                := "2.13.16",
+    scalaVersion                := "2.13.18",
     // Do not publish artifacts for Gatling-specific configurations (simulations/tests)
     Gatling / publishArtifact   := false,
     GatlingIt / publishArtifact := false,
