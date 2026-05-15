@@ -28,7 +28,7 @@ object Actions {
   def insertTest(): DBInsertActionBuilder =
     jdbc("INSERT TEST")
       .insertInto("TEST_TABLE", Columns("ID", "NAME"))
-      .values("ID" -> "${i}", "NAME" -> "Test3")
+      .values("ID" -> "#{i}", "NAME" -> "Test3")
 
   def callTest(): DBCallActionBuilder =
     jdbc("CALL PROCEDURE TEST")

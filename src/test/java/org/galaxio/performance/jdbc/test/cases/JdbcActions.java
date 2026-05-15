@@ -44,12 +44,12 @@ public class JdbcActions {
 
     public static BatchActionBuilder batchTest(){
         return jdbc("Batch records").batch(
-                insetInto("TEST_TABLE", "ID", "NAME", "FLAG")
+                insertInto("TEST_TABLE", "ID", "NAME", "FLAG")
                         .values(Map.of("ID", 20, "NAME", "Test 12", "FLAG", true)),
-                insetInto("TEST_TABLE", "ID", "NAME")
+                insertInto("TEST_TABLE", "ID", "NAME")
                         .values(Map.of("ID", 40, "NAME", "Test 34")),
                 update("TEST_TABLE").set(Map.of("NAME", "Test5")).where("ID = 2"),
-                insetInto("TT", "ID", "NAME").values(Map.of("ID", UUID.randomUUID(), "NAME", "OOO342ff"))
+                insertInto("TT", "ID", "NAME").values(Map.of("ID", UUID.randomUUID(), "NAME", "OOO342ff"))
         );
     }
 

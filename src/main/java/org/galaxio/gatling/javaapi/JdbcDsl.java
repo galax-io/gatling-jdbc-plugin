@@ -24,8 +24,17 @@ public final class JdbcDsl {
         return new DBBaseAction(org.galaxio.gatling.jdbc.Predef.jdbc(Expressions.toStringExpression(name)));
     }
 
+    /**
+     * Deprecated typo. Use {@link #insertInto(String, String...)} instead.
+     */
+    @Deprecated
     @Nonnull
     public static BatchInsertBaseAction insetInto(@Nonnull String tableName, String... columns){
+        return insertInto(tableName, columns);
+    }
+
+    @Nonnull
+    public static BatchInsertBaseAction insertInto(@Nonnull String tableName, String... columns){
         return new BatchInsertBaseAction(org.galaxio.gatling.jdbc.Predef.insertInto(Expressions.toStringExpression(tableName),
                 new org.galaxio.gatling.jdbc.actions.actions.Columns(
                         asScala(

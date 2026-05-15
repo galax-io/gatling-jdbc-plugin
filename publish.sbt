@@ -2,7 +2,7 @@ ThisBuild / versionScheme        := Some("semver-spec")
 ThisBuild / organization         := "org.galaxio"
 ThisBuild / organizationName     := "Galaxio Team"
 ThisBuild / organizationHomepage := Some(url("https://github.com/galax-io"))
-ThisBuild / description          := "Plugin to support JDBC performance testing in Gatling."
+ThisBuild / description          := "Gatling plugin that adds JDBC support for load testing: provides a DSL and helpers to execute SQL via pooled connections (HikariCP), assert results, and measure database latency/throughput."
 
 ThisBuild / homepage := Some(url("https://github.com/galax-io/gatling-jdbc-plugin"))
 ThisBuild / scmInfo  := Some(
@@ -12,7 +12,7 @@ ThisBuild / scmInfo  := Some(
   ),
 )
 
-ThisBuild / scalaVersion := "2.13.14"
+ThisBuild / scalaVersion := "2.13.18"
 
 ThisBuild / developers := List(
   Developer(
@@ -25,13 +25,4 @@ ThisBuild / developers := List(
 
 // Remove all additional repository other than Maven Central from POM
 ThisBuild / pomIncludeRepository := { _ => false }
-ThisBuild / publishTo            := {
-  val nexus = "https://s01.oss.sonatype.org/"
-  if (isSnapshot.value) Some("snapshots" at nexus + "content/repositories/snapshots")
-  else Some("releases" at nexus + "service/local/staging/deploy/maven2")
-}
-
-ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
-sonatypeRepository                 := "https://s01.oss.sonatype.org/service/local"
-
-ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
+ThisBuild / licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0"))
