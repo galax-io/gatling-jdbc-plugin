@@ -7,7 +7,7 @@ import org.galaxio.performance.jdbc.test.dataBase
 class JdbcFailureSimulationSpec extends Simulation {
 
   @volatile private var sessionFailedAfterBadQuery: Option[Boolean] = None
-  @volatile private var sessionOkAfterGoodQuery: Option[Boolean] = None
+  @volatile private var sessionOkAfterGoodQuery: Option[Boolean]    = None
 
   private val scn = scenario("JDBC failure propagation")
     .exec(
@@ -28,8 +28,14 @@ class JdbcFailureSimulationSpec extends Simulation {
     }
 
   after {
-    assert(sessionOkAfterGoodQuery.contains(false), s"Session should NOT be failed after successful query, got: $sessionOkAfterGoodQuery")
-    assert(sessionFailedAfterBadQuery.contains(true), s"Session SHOULD be failed after bad query, got: $sessionFailedAfterBadQuery")
+    assert(
+      sessionOkAfterGoodQuery.contains(false),
+      s"Session should NOT be failed after successful query, got: $sessionOkAfterGoodQuery",
+    )
+    assert(
+      sessionFailedAfterBadQuery.contains(true),
+      s"Session SHOULD be failed after bad query, got: $sessionFailedAfterBadQuery",
+    )
   }
 
   setUp(
