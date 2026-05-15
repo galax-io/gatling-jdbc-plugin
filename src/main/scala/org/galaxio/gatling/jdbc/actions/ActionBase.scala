@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.Status
+import io.gatling.commons.stats.{KO, Status}
 import io.gatling.core.action.Action
 import io.gatling.core.session.Session
 import io.gatling.core.structure.ScenarioContext
@@ -10,8 +10,8 @@ import org.galaxio.gatling.jdbc.protocol.JdbcProtocol
 trait ActionBase {
   val ctx: ScenarioContext
 
-  private val jdbcComponents         = ctx.protocolComponentsRegistry.components(JdbcProtocol.jdbcProtocolKey)
-  protected val dbClient: JDBCClient = jdbcComponents.client
+  private lazy val jdbcComponents         = ctx.protocolComponentsRegistry.components(JdbcProtocol.jdbcProtocolKey)
+  protected lazy val dbClient: JDBCClient = jdbcComponents.client
 
   protected def executeNext(
       session: Session,
@@ -33,6 +33,7 @@ trait ActionBase {
       responseCode,
       message,
     )
-    next ! session.logGroupRequestTimings(sent, received)
+    val updatedSession = if (status == KO) session.markAsFailed else session
+    next ! updatedSession.logGroupRequestTimings(sent, received)
   }
 }
