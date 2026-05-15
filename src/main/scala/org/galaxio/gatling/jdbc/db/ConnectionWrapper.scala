@@ -10,6 +10,7 @@ trait ConnectionWrapper[F[_]] {
   def getAutoCommit: F[Boolean]
   def setAutoCommit(autoCommit: Boolean): F[Unit]
   def commit: F[Unit]
+  def rollback: F[Unit]
   def close: F[Unit]
 }
 
@@ -29,6 +30,8 @@ object ConnectionWrapper {
     override def setAutoCommit(autoCommit: Boolean): Future[Unit] = Future(c.setAutoCommit(autoCommit))
 
     override def commit: Future[Unit] = Future(c.commit())
+
+    override def rollback: Future[Unit] = Future(c.rollback())
   }
 
   object Impl {

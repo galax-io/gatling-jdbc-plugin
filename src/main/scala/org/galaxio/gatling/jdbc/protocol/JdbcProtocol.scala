@@ -8,6 +8,7 @@ import org.galaxio.gatling.jdbc.db._
 
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, ThreadFactory}
+import scala.concurrent.duration.FiniteDuration
 
 object JdbcProtocol {
   private final class JdbcThreadFactory(prefix: String) extends ThreadFactory {
@@ -32,12 +33,19 @@ object JdbcProtocol {
       protocol => {
         val blockingPool   = Executors.newFixedThreadPool(protocol.blockingPoolSize, new JdbcThreadFactory("jdbc-blocking"))
         val connectionPool = new HikariDataSource(protocol.hikariConfig)
-        JdbcComponents(JDBCClient(connectionPool, blockingPool))
+        JdbcComponents(
+          JDBCClient(connectionPool, blockingPool, protocol.queryTimeout.map(_.toSeconds.toInt)),
+          connectionPool,
+        )
       }
   }
 
 }
 
-case class JdbcProtocol(hikariConfig: HikariConfig, blockingPoolSize: Int) extends Protocol {
+case class JdbcProtocol(
+    hikariConfig: HikariConfig,
+    blockingPoolSize: Int,
+    queryTimeout: Option[FiniteDuration] = None,
+) extends Protocol {
   type Components = JdbcComponents
 }

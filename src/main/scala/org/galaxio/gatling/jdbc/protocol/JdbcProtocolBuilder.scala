@@ -8,7 +8,7 @@ import scala.concurrent.duration._
 case object JdbcProtocolBuilderBase {
 
   def url(url: String): JdbcProtocolBuilderUsernameStep    = JdbcProtocolBuilderUsernameStep(url)
-  def hikariConfig(cfg: HikariConfig): JdbcProtocolBuilder = JdbcProtocolBuilder(cfg, cfg.getMaximumPoolSize)
+  def hikariConfig(cfg: HikariConfig): JdbcProtocolBuilder = JdbcProtocolBuilder(cfg, cfg.getMaximumPoolSize, None)
 
 }
 
@@ -33,6 +33,7 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     minimumIdleConnections: Int = 10,
     blockingPoolSize: Option[Int] = None,
     connectionTimeout: FiniteDuration = 1.minute,
+    queryTimeout: Option[FiniteDuration] = None,
 ) {
   def protocolBuilder: JdbcProtocolBuilder = {
     val hikariConfig = new HikariConfig()
@@ -44,7 +45,7 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     hikariConfig.setMinimumIdle(minimumIdleConnections)
     hikariConfig.setConnectionTimeout(connectionTimeout.toMillis)
 
-    JdbcProtocolBuilder(hikariConfig, blockingPoolSize.getOrElse(maximumPoolSize))
+    JdbcProtocolBuilder(hikariConfig, blockingPoolSize.getOrElse(maximumPoolSize), queryTimeout)
   }
 
   def maximumPoolSize(newValue: Int): JdbcProtocolBuilderConnectionSettingsStep              =
@@ -55,10 +56,16 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     this.copy(blockingPoolSize = Some(newValue))
   def connectionTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep =
     this.copy(connectionTimeout = newValue)
+  def queryTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep      =
+    this.copy(queryTimeout = Some(newValue))
 }
 
-final case class JdbcProtocolBuilder(hikariConfig: HikariConfig, blockingPoolSize: Int) {
+final case class JdbcProtocolBuilder(
+    hikariConfig: HikariConfig,
+    blockingPoolSize: Int,
+    queryTimeout: Option[FiniteDuration] = None,
+) {
 
-  def build: Protocol = JdbcProtocol(hikariConfig, blockingPoolSize)
+  def build: Protocol = JdbcProtocol(hikariConfig, blockingPoolSize, queryTimeout)
 
 }

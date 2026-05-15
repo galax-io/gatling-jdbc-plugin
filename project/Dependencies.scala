@@ -18,4 +18,11 @@ object Dependencies {
   lazy val h2jdbc    = "com.h2database" % "h2"        % "2.4.240" % Test
   lazy val scalatest = "org.scalatest" %% "scalatest" % "3.2.19"  % Test
 
+  lazy val testcontainersScalatest = "com.dimafeng" %% "testcontainers-scala-scalatest"  % "0.41.8" % Test
+  lazy val testcontainersPostgres  = "com.dimafeng" %% "testcontainers-scala-postgresql" % "0.41.8" % Test
+  lazy val testcontainersMysql     = "com.dimafeng" %% "testcontainers-scala-mysql"      % "0.41.8" % Test
+
+  lazy val postgresql = "org.postgresql" % "postgresql"        % "42.7.7" % Test
+  lazy val mysql      = "com.mysql"      % "mysql-connector-j" % "9.3.0"  % Test
+
 }
