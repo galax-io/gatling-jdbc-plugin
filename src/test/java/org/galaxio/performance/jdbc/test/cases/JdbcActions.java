@@ -73,6 +73,13 @@ public class JdbcActions {
                 .check(allResults().saveAs("RR"));
     }
 
+    public static QueryActionBuilder selectWithEL(){
+        return jdbc("SELECT WITH EL")
+                .query("SELECT * FROM TEST_TABLE WHERE ID = #{elId}")
+                .check(simpleCheck(simpleCheckType.NonEmpty),
+                        allResults().saveAs("elResult"));
+    }
+
     public static QueryActionBuilder checkTestTableAfterBatch(){
         return jdbc("Check TEST_TABLE")
                 .query("SELECT * FROM TEST_TABLE WHERE EXISTS(SELECT NAME FROM TEST_TABLE WHERE ID = 2 AND NAME = 'Test5')" +

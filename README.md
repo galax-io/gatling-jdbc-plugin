@@ -14,5 +14,46 @@ You may add plugin as dependency in project with your tests. Write this to your 
 libraryDependencies += "org.galaxio" %% "gatling-jdbc-plugin" % <version> % Test
 ``` 
 
+## Using Gatling Session Variables
+
+The plugin supports [Gatling Expression Language (EL)](https://docs.gatling.io/reference/script/core/session/el/) in SQL queries.
+Use `#{variableName}` to reference values stored in the Gatling session.
+
+### `query()` with EL
+
+Scala:
+``` scala
+exec(session => session.set("tableName", "USERS"))
+.exec(jdbc("dynamic query").query("SELECT * FROM #{tableName} WHERE id = #{id}"))
+```
+
+Java:
+``` java
+.exec(session -> session.set("tableName", "USERS"))
+.exec(jdbc("dynamic query").query("SELECT * FROM #{tableName} WHERE id = #{id}"))
+```
+
+### `queryP()` with EL
+
+`queryP` uses two different syntaxes:
+- `{param}` in SQL string — prepared statement placeholder (replaced with `?`)
+- `"#{var}"` in `.params()` — Gatling EL, resolves value from session at runtime
+
+Scala:
+``` scala
+exec(
+  jdbc("parameterized query")
+    .queryP("SELECT * FROM TEST_TABLE WHERE id = {id}")
+    .params("id" -> "#{userId}")
+)
+```
+
+Java:
+``` java
+.exec(jdbc("parameterized query")
+    .queryP("SELECT * FROM TEST_TABLE WHERE id = {id}")
+    .params(Map.of("id", "#{userId}")))
+```
+
 ## Example Scenarios
 Examples [here](https://github.com/galax-io/gatling-jdbc-plugin/tree/master/src/test)

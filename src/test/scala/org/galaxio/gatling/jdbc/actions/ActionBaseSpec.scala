@@ -19,10 +19,10 @@ class ActionBaseSpec extends AnyFlatSpec with Matchers {
   }
 
   private val noOpStatsEngine: StatsEngine = new StatsEngine {
-    override def start(): Unit = ()
+    override def start(): Unit                                                             = ()
     override def stop(controller: akka.actor.ActorRef, exception: Option[Exception]): Unit = ()
-    override def logUserStart(scenario: String): Unit = ()
-    override def logUserEnd(scenario: String): Unit = ()
+    override def logUserStart(scenario: String): Unit                                      = ()
+    override def logUserEnd(scenario: String): Unit                                        = ()
     override def logResponse(
         scenario: String,
         groups: List[String],
@@ -32,18 +32,18 @@ class ActionBaseSpec extends AnyFlatSpec with Matchers {
         status: Status,
         responseCode: Option[String],
         message: Option[String],
-    ): Unit = ()
+    ): Unit                                                                                = ()
     override def logGroupEnd(
         scenario: String,
         groupBlock: io.gatling.core.session.GroupBlock,
         exitTimestamp: Long,
-    ): Unit = ()
+    ): Unit                                                                                = ()
     override def logRequestCrash(
         scenario: String,
         groups: List[String],
         requestName: String,
         error: String,
-    ): Unit = ()
+    ): Unit                                                                                = ()
   }
 
   private val coreComponents = new CoreComponents(
@@ -71,9 +71,9 @@ class ActionBaseSpec extends AnyFlatSpec with Matchers {
 
   private class CaptureAction extends Action {
     @volatile var capturedSession: Option[Session] = None
-    override def name: String = "capture"
-    override def !(session: Session): Unit = capturedSession = Some(session)
-    override def execute(session: Session): Unit = capturedSession = Some(session)
+    override def name: String                      = "capture"
+    override def !(session: Session): Unit         = capturedSession = Some(session)
+    override def execute(session: Session): Unit   = capturedSession = Some(session)
   }
 
   private class TestActionBase(override val ctx: ScenarioContext) extends ActionBase {

@@ -83,4 +83,9 @@ object Actions {
       .check(
         simpleCheck(x => x.length == 1),
       )
+
+  def selectWithEL: QueryActionBuilder =
+    jdbc("SELECT WITH EL")
+      .query("SELECT * FROM TEST_TABLE WHERE ID = #{elId}")
+      .check(simpleCheck(_.nonEmpty), allResults.saveAs("elResult"))
 }
