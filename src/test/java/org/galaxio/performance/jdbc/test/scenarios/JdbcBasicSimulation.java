@@ -10,6 +10,13 @@ public class JdbcBasicSimulation {
             .exec(JdbcActions.createTable())
             .exec(JdbcActions.createprocedure())
             .exec(JdbcActions.insertTest())
+            .exec(JdbcActions.selectInsertedTestBoolean())
+            .exec(session -> {
+                if (!session.getBoolean("insertedTestFlag")) {
+                    throw new IllegalStateException("Expected insertedTestFlag to be true");
+                }
+                return session;
+            })
             .exec(JdbcActions.callTest())
             .exec(JdbcActions.batchTest())
             .exec(JdbcActions.selectTT())
