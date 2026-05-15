@@ -55,6 +55,38 @@ Java:
     .params(Map.of("id", "#{userId}")))
 ```
 
+## Blocking Executor
+
+JDBC calls are blocking, so the plugin runs them on a dedicated executor instead of on Gatling event-loop threads.
+
+By default, the plugin uses a bounded fixed thread pool, and `blockingPoolSize` defaults to the configured `maximumPoolSize`.
+This is the safe default for high-concurrency tests because it prevents unbounded native thread growth when JDBC calls pile up.
+
+### Scala
+
+```scala
+import org.galaxio.gatling.jdbc.Predef._
+
+val dataBase = DB
+  .url("jdbc:postgresql://localhost:5432/test")
+  .username("user")
+  .password("pass")
+  .maximumPoolSize(32)
+  .blockingPoolSize(32)
+```
+
+### Java
+
+```java
+var dataBase = DB()
+    .url("jdbc:postgresql://localhost:5432/test")
+    .username("user")
+    .password("pass")
+    .maximumPoolSize(32)
+    .blockingPoolSize(32)
+    .protocolBuilder();
+```
+
 ## Example Scenarios
 Examples [here](https://github.com/galax-io/gatling-jdbc-plugin/tree/master/src/test)
 
@@ -105,19 +137,4 @@ jdbc("select users")
         column("USER_ID").saveAs("userIds"),
         allResults().saveAs("rows")
     );
-```
-
-### Kotlin
-
-```kotlin
-import org.galaxio.gatling.javaapi.JdbcDsl.*
-
-jdbc("select users")
-    .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
-    .check(
-        cell("NAME", 0).saveAs("firstName"),
-        row(0).saveAs("firstRow"),
-        column("USER_ID").saveAs("userIds"),
-        allResults().saveAs("rows")
-    )
 ```

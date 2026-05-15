@@ -23,6 +23,10 @@ public class JdbcProtocolBuilderConnectionSettingsStep {
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.minimumIdleConnections(newValue));
     }
 
+    public JdbcProtocolBuilderConnectionSettingsStep blockingPoolSize(Integer newValue){
+        return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.blockingPoolSize(newValue));
+    }
+
     public JdbcProtocolBuilderConnectionSettingsStep connectionTimeout(Duration newValue){
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.connectionTimeout(DurationConverters.toScala(newValue)));
     }
