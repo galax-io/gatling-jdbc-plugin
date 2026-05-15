@@ -55,6 +55,35 @@ Java:
     .params(Map.of("id", "#{userId}")))
 ```
 
+### Java/Kotlin typed values in `params()` and `values()`
+
+Java and Kotlin map-based DSL methods preserve literal types such as `Boolean`, numeric values, UUIDs, and dates.
+String values still support Gatling EL, so you can mix typed literals and session expressions in the same map.
+
+Java:
+```java
+jdbc("insert user")
+    .insertInto("USERS", "id", "name", "active")
+    .values(Map.of(
+        "id", 1,
+        "name", "#{userName}",
+        "active", true
+    ));
+```
+
+Kotlin:
+```kotlin
+jdbc("insert user")
+    .insertInto("USERS", "id", "name", "active")
+    .values(
+        mapOf(
+            "id" to 1,
+            "name" to "#{userName}",
+            "active" to true,
+        )
+    )
+```
+
 ## Blocking Executor
 
 JDBC calls are blocking, so the plugin runs them on a dedicated executor instead of on Gatling event-loop threads.

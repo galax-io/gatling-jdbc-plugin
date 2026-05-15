@@ -32,8 +32,17 @@ public class JdbcActions {
 
     public static DBInsertActionBuilder insertTest(){
         return jdbc("INSERT TEST")
-                .insertInto("TEST_TABLE", "id", "name")
-                .values(Map.of("id", 2, "name", "Test3"));
+                .insertInto("TEST_TABLE", "id", "name", "flag")
+                .values(Map.of("id", 2, "name", "Test3", "flag", true));
+    }
+
+    public static QueryActionBuilder selectInsertedTestBoolean() {
+        return jdbc("SELECT INSERTED TEST BOOLEAN")
+                .query("SELECT FLAG FROM TEST_TABLE WHERE ID = 2")
+                .check(
+                        simpleCheck(simpleCheckType.NonEmpty),
+                        cell("FLAG", 0).saveAs("insertedTestFlag")
+                );
     }
 
     public static DBCallActionBuilder callTest(){
