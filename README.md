@@ -87,6 +87,21 @@ var dataBase = DB()
     .protocolBuilder();
 ```
 
+### Kotlin
+
+```kotlin
+import org.galaxio.gatling.javaapi.JdbcDsl.DB
+import org.galaxio.gatling.javaapi.protocol.JdbcProtocolBuilder
+
+val dataBase: JdbcProtocolBuilder = DB()
+    .url("jdbc:postgresql://localhost:5432/test")
+    .username("user")
+    .password("pass")
+    .maximumPoolSize(32)
+    .blockingPoolSize(32)
+    .protocolBuilder()
+```
+
 ## Example Scenarios
 Examples [here](https://github.com/galax-io/gatling-jdbc-plugin/tree/master/src/test)
 
@@ -137,4 +152,19 @@ jdbc("select users")
         column("USER_ID").saveAs("userIds"),
         allResults().saveAs("rows")
     );
+```
+
+### Kotlin
+
+```kotlin
+import org.galaxio.gatling.javaapi.JdbcDsl.*
+
+jdbc("select users")
+    .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
+    .check(
+        cell("NAME", 0).saveAs("firstName"),
+        row(0).saveAs("firstRow"),
+        column("USER_ID").saveAs("userIds"),
+        allResults().saveAs("rows")
+    )
 ```
