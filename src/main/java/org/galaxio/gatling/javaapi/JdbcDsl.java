@@ -10,6 +10,7 @@ import org.galaxio.gatling.jdbc.check.JdbcCheckSupport;
 
 import javax.annotation.Nonnull;
 import java.util.Arrays;
+import java.util.Objects;
 
 import static scala.jdk.javaapi.CollectionConverters.asScala;
 
@@ -57,6 +58,21 @@ public final class JdbcDsl {
     @Nonnull
     public static io.gatling.core.check.CheckBuilder.Final<JdbcCheckSupport.JdbcAllRecordCheckType,scala.collection.immutable.List<scala.collection.immutable.Map<java.lang.String,java.lang.Object>>> allResults(){
         return org.galaxio.gatling.jdbc.internal.JdbcCheck.results();
+    }
+
+    @Nonnull
+    public static io.gatling.core.check.CheckBuilder.Final<JdbcCheckSupport.JdbcAllRecordCheckType,scala.collection.immutable.Map<java.lang.String,java.lang.Object>> row(int rowIndex){
+        return org.galaxio.gatling.jdbc.internal.JdbcCheck.javaRow(rowIndex);
+    }
+
+    @Nonnull
+    public static io.gatling.core.check.CheckBuilder.Final<JdbcCheckSupport.JdbcAllRecordCheckType,scala.collection.immutable.List<java.lang.Object>> column(@Nonnull String columnName){
+        return org.galaxio.gatling.jdbc.internal.JdbcCheck.javaColumn(Objects.requireNonNull(columnName, "columnName cannot be null"));
+    }
+
+    @Nonnull
+    public static io.gatling.core.check.CheckBuilder.Final<JdbcCheckSupport.JdbcAllRecordCheckType,java.lang.Object> cell(@Nonnull String columnName, int rowIndex){
+        return org.galaxio.gatling.jdbc.internal.JdbcCheck.javaCell(Objects.requireNonNull(columnName, "columnName cannot be null"), rowIndex);
     }
 
 }

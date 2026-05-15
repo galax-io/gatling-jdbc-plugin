@@ -60,6 +60,9 @@ object KtJdbcActions {
                 .queryP("SELECT * FROM TEST_TABLE WHERE ID = {id}")
                 .params(mapOf("id" to 20))
                 .check(simpleCheck(simpleCheckType.NonEmpty),
+                        cell("NAME", 0).saveAs("FIRST_TEST_NAME"),
+                        row(0).saveAs("FIRST_TEST_ROW"),
+                        column("NAME").saveAs("TEST_NAMES"),
                         allResults().saveAs("R"))
     }
 
