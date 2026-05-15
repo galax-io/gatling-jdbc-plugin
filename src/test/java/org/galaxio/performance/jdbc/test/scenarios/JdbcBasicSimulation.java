@@ -14,6 +14,8 @@ public class JdbcBasicSimulation {
             .exec(JdbcActions.batchTest())
             .exec(JdbcActions.selectTT())
             .exec(JdbcActions.selectTest())
+            .exec(session -> session.set("elId", 20))
+            .exec(JdbcActions.selectWithEL())
             .exec(JdbcActions.selectAfterBatch())
             .exec(JdbcActions.checkTestTableAfterBatch())
             ;

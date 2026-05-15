@@ -35,9 +35,13 @@ case class DBRawQueryAction(requestName: Expression[String], query: Expression[S
             Some(exception.getMessage),
           ),
       ))
-      .onFailure(m =>
+      .onFailure { m =>
+        val message =
+          if (m.contains("No attribute named"))
+            s"$m. Hint: ensure Gatling EL variable (e.g. #{varName}) is set in session before this action"
+          else m
         requestName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
+          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, message)
           executeNext(
             session,
             ctx.coreComponents.clock.nowMillis,
@@ -46,10 +50,10 @@ case class DBRawQueryAction(requestName: Expression[String], query: Expression[S
             next,
             rn,
             Some("ERROR"),
-            Some(m),
+            Some(message),
           )
-        },
-      )
+        }
+      }
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }
