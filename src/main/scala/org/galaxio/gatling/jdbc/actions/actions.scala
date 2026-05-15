@@ -14,9 +14,11 @@ object actions {
 
     def rawSql(queryString: Expression[String]): RawSqlActionBuilder = RawSqlActionBuilder(requestName, queryString)
 
-    def queryP(sql: Expression[String]): QueryActionParamsStep = QueryActionParamsStep(requestName, sql)
-    def query(sql: Expression[String]): QueryActionBuilder     = QueryActionBuilder(requestName, sql, params = Seq.empty)
-    def batch(actions: BatchAction*): BatchActionBuilder       = BatchActionBuilder(requestName, actions)
+    def queryP(sql: Expression[String]): QueryActionParamsStep            = QueryActionParamsStep(requestName, sql)
+    def query(sql: Expression[String]): QueryActionBuilder                = QueryActionBuilder(requestName, sql, params = Seq.empty)
+    def batch(actions: BatchAction*): BatchActionBuilder                  = BatchActionBuilder(requestName, actions)
+    def transaction(stmts: Expression[String]*): TransactionActionBuilder =
+      TransactionActionBuilder(requestName, stmts)
   }
 
   final case class BatchInsertBaseAction(tableName: Expression[String], columns: Columns) {
@@ -110,5 +112,13 @@ object actions {
 
   final case class BatchActionBuilder(batchName: Expression[String], actions: Seq[BatchAction]) extends ActionBuilder {
     override def build(ctx: ScenarioContext, next: Action): Action = DBBatchAction(batchName, actions, next, ctx)
+  }
+
+  case class TransactionActionBuilder(
+      requestName: Expression[String],
+      statements: Seq[Expression[String]],
+  ) extends ActionBuilder {
+    override def build(ctx: ScenarioContext, next: Action): Action =
+      DBTransactionAction(requestName, statements, ctx, next)
   }
 }

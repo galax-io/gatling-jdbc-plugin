@@ -30,4 +30,8 @@ public class JdbcProtocolBuilderConnectionSettingsStep {
     public JdbcProtocolBuilderConnectionSettingsStep connectionTimeout(Duration newValue){
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.connectionTimeout(DurationConverters.toScala(newValue)));
     }
+
+    public JdbcProtocolBuilderConnectionSettingsStep queryTimeout(Duration newValue){
+        return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.queryTimeout(DurationConverters.toScala(newValue)));
+    }
 }

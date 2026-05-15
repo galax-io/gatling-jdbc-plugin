@@ -1,0 +1,22 @@
+{
+  "template": "# Changelog\n\n#{{CHANGELOG}}",
+  "categories": [
+    {"title": "✨ Features", "labels": ["feat", "feature"]},
+    {"title": "🐛 Bug Fixes", "labels": ["fix", "bug"]},
+    {"title": "📝 Documentation", "labels": ["docs"]},
+    {"title": "⚡ Performance Improvements", "labels": ["perf"]},
+    {"title": "♻️ Refactoring", "labels": ["refactor"]},
+    {"title": "🧪 Tests", "labels": ["test"]},
+    {"title": "🧹 Chores", "labels": ["chore"]},
+    {"title": "📦 Dependencies", "labels": ["dependency"]},
+    {"title": "🚨 Breaking Changes", "labels": ["breaking"]},
+    {"title": "🤖 CI / Build", "labels": ["ci"]}
+  ],
+  "label_extractor": [
+    {
+      "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
+      "on_property": "title",
+      "target": "$1"
+    }
+  ]
+}

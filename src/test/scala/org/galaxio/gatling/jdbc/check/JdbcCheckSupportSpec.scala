@@ -68,4 +68,58 @@ class JdbcCheckSupportSpec extends AnyFlatSpec with Matchers with JdbcCheckSuppo
       case other                  => fail(s"Expected a failed validation, got $other")
     }
   }
+
+  "allResults" should "save the full result set" in {
+    val (updatedSession, error) = runChecks(rows, allResults.saveAs("all"))
+
+    error shouldBe None
+    updatedSession.attributes("all") shouldBe rows
+  }
+
+  it should "handle empty result set" in {
+    val (updatedSession, error) = runChecks(List.empty, allResults.saveAs("all"))
+
+    error shouldBe None
+    updatedSession.attributes("all") shouldBe List.empty
+  }
+
+  "column" should "fail with a useful message when the column is missing" in {
+    val (_, error) = runChecks(rows, column("AGE").exists)
+
+    error match {
+      case Some(Failure(message)) =>
+        message should include("Column 'AGE' was not found")
+      case other                  => fail(s"Expected a failed validation, got $other")
+    }
+  }
+
+  it should "handle empty result set" in {
+    val (updatedSession, error) = runChecks(List.empty, column("NAME").saveAs("names"))
+
+    error shouldBe None
+    updatedSession.attributes("names") shouldBe List.empty
+  }
+
+  "cell" should "fail when row index is out of bounds" in {
+    val (_, error) = runChecks(rows, cell("NAME", 5).exists)
+
+    error match {
+      case Some(Failure(message)) =>
+        message should include("Row index 5 is out of bounds")
+      case other                  => fail(s"Expected a failed validation, got $other")
+    }
+  }
+
+  "simpleCheck" should "pass when predicate is true" in {
+    val (_, error) = runChecks(rows, simpleCheck(_.nonEmpty))
+    error shouldBe None
+  }
+
+  it should "fail when predicate is false" in {
+    val (_, error) = runChecks(rows, simpleCheck(_.isEmpty))
+    error match {
+      case Some(Failure(message)) => message should include("Jdbc check failed")
+      case other                  => fail(s"Expected failure, got $other")
+    }
+  }
 }

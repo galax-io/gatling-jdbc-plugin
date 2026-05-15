@@ -4,15 +4,12 @@ on:
   pull_request:
     branches: ['**']
   push:
-    branches: ['**']
+    branches: ['main']
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: read
-  checks: write
-  pull-requests: write
-  packages: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -26,67 +23,147 @@ env:
   TERM: xterm-256color
 
 jobs:
-  test:
-    name: Lint, Compile & Test
+  format:
+    name: Formatting
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup Java (Temurin 17) with sbt cache
-        uses: actions/setup-java@v4
+        uses: actions/checkout@v6
+
+      - name: Setup Java (Temurin 17)
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: sbt
-      - uses: sbt/setup-sbt@v1
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
       - name: Cache Coursier
-        uses: coursier/cache-action@v6
+        uses: coursier/cache-action@v8
+
+      - name: Check Formatting
+        run: sbt scalafmtCheckAll scalafmtSbtCheck
+
+  test:
+    name: Test (Java ${{ matrix.java }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java (Temurin ${{ matrix.java }})
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: sbt
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Cache Coursier
+        uses: coursier/cache-action@v8
+
       - name: Cache Ivy/SBT
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.ivy2/cache
             ~/.sbt
             ~/.cache/coursier
-          key: sbt-${{ runner.os }}-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/**') }}
-          restore-keys: sbt-${{ runner.os }}-
-      - name: Check Formatting
-        run: sbt scalafmtCheckAll scalafmtSbtCheck
+          key: sbt-${{ runner.os }}-java${{ matrix.java }}-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/**') }}
+          restore-keys: sbt-${{ runner.os }}-java${{ matrix.java }}-
+
       - name: Compile
-        run: sbt clean compile
-      - name: Tests (including Gatling JDBC example on H2)
-        run: sbt coverage "Gatling / testOnly org.galaxio.performance.jdbc.test.DebugTest" test coverageReport coverageOff
+        run: sbt compile
+
+      - name: Unit Tests with Coverage
+        run: sbt coverage test coverageReport coverageOff
+
+      - name: Gatling Simulation (H2)
+        run: sbt "Gatling / testOnly org.galaxio.performance.jdbc.test.DebugTest"
+
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        if: matrix.java == '17'
+        uses: codecov/codecov-action@v6
         with:
           fail_ci_if_error: false
 
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java (Temurin 21)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: sbt
+
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Cache Coursier
+        uses: coursier/cache-action@v8
+
+      - name: Cache Ivy/SBT
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.ivy2/cache
+            ~/.sbt
+            ~/.cache/coursier
+          key: sbt-${{ runner.os }}-java21-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/**') }}
+          restore-keys: sbt-${{ runner.os }}-java21-
+
+      - name: Integration Tests (Testcontainers)
+        run: sbt "Test / testOnly -- -n org.galaxio.gatling.jdbc.tags.DockerTest"
+
   release:
     name: Release (tag-driven)
-    needs: [test]
+    needs: [format, test, integration]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Setup Java (Temurin 17) with sbt cache
-        uses: actions/setup-java@v4
+
+      - name: Setup Java (Temurin 17)
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: sbt
+
       - name: Setup sbt
         uses: sbt/setup-sbt@v1
+
       - name: Cache Coursier
-        uses: coursier/cache-action@v6
+        uses: coursier/cache-action@v8
+
       - name: Cache Ivy/SBT
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.ivy2/cache
@@ -94,6 +171,7 @@ jobs:
             ~/.cache/coursier
           key: sbt-${{ runner.os }}-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/**') }}
           restore-keys: sbt-${{ runner.os }}-
+
       - name: Compute next version & create tag on main
         id: bump
         if: github.ref == 'refs/heads/main'
@@ -156,6 +234,7 @@ jobs:
             git tag -a "$NEXT_TAG" -m "Release $NEXT_TAG"
             git push origin "$NEXT_TAG"
           fi
+
       - name: Publish to Sonatype via sbt-ci-release
         if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && steps.bump.outputs.tag)
         env:
@@ -187,44 +266,24 @@ jobs:
           else
             sbt "set ThisBuild/version := \"${VERSION}\"" ci-release
           fi
+
       - name: Generate Changelog
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@v6
         if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && steps.bump.outputs.tag)
         with:
           mode: "COMMIT"
           fromTag: ${{ github.ref == 'refs/heads/main' && steps.bump.outputs.last_tag || '' }}
           toTag:   ${{ github.ref == 'refs/heads/main' && steps.bump.outputs.tag || '' }}
-          configurationJson: |
-            {
-              "template": "# Changelog\n\n#{{CHANGELOG}}",
-              "categories": [
-                {"title": "✨ Features", "labels": ["feat", "feature"]},
-                {"title": "🐛 Bug Fixes", "labels": ["fix", "bug"]},
-                {"title": "📝 Documentation", "labels": ["docs"]},
-                {"title": "⚡ Performance Improvements", "labels": ["perf"]},
-                {"title": "♻️ Refactoring", "labels": ["refactor"]},
-                {"title": "🧪 Tests", "labels": ["test"]},
-                {"title": "🧹 Chores", "labels": ["chore"]},
-                {"title": "📦 Dependencies", "labels": ["dependency"]},
-                {"title": "🚨 Breaking Changes", "labels": ["breaking"]},
-                {"title": "🤖 CI / Build", "labels": ["ci"]}
-              ],
-              "label_extractor": [
-                {
-                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
-                  "on_property": "title",
-                  "target": "$1"
-                }
-              ]
-            }
+          configuration: ".github/changelog/release-changelog-builder.json"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && steps.bump.outputs.tag)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref == 'refs/heads/main' && steps.bump.outputs.tag || '' }}
+          tag_name: ${{ github.ref == 'refs/heads/main' && steps.bump.outputs.tag || github.ref_name }}
           body: ${{ steps.changelog.outputs.changelog }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
