@@ -57,3 +57,67 @@ Java:
 
 ## Example Scenarios
 Examples [here](https://github.com/galax-io/gatling-jdbc-plugin/tree/master/src/test)
+
+## Inspecting Query Results
+
+JDBC query checks operate on a result set represented as a list of rows, where each row is a map keyed by the SQL column label:
+
+- Scala session type saved by `allResults.saveAs("rows")`: `List[Map[String, Any]]`
+- Java/Kotlin session type saved by `allResults().saveAs("rows")`: Scala immutable collections exposed through Gatling's Java API
+
+Column aliases are supported. For example, `SELECT user_id AS id` makes the value available under `id`.
+
+### Available Result Checks
+
+- `allResults` / `allResults()` - extract the full result set
+- `row(index)` - extract a single row by zero-based index
+- `column(name)` - extract all values from a column
+- `cell(name, rowIndex)` - extract a single value from a column at the given zero-based row index
+
+When a row index or column name is invalid, the check fails with a descriptive error message.
+
+### Scala
+
+```scala
+import io.gatling.core.Predef._
+import org.galaxio.gatling.jdbc.Predef._
+
+jdbc("select users")
+  .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
+  .check(
+    cell("NAME", 0).is("Alice"),
+    row(0).saveAs("firstRow"),
+    column("USER_ID").saveAs("userIds"),
+    allResults.saveAs("rows"),
+  )
+```
+
+### Java
+
+```java
+import static org.galaxio.gatling.javaapi.JdbcDsl.*;
+
+jdbc("select users")
+    .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
+    .check(
+        cell("NAME", 0).saveAs("firstName"),
+        row(0).saveAs("firstRow"),
+        column("USER_ID").saveAs("userIds"),
+        allResults().saveAs("rows")
+    );
+```
+
+### Kotlin
+
+```kotlin
+import org.galaxio.gatling.javaapi.JdbcDsl.*
+
+jdbc("select users")
+    .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
+    .check(
+        cell("NAME", 0).saveAs("firstName"),
+        row(0).saveAs("firstRow"),
+        column("USER_ID").saveAs("userIds"),
+        allResults().saveAs("rows")
+    )
+```

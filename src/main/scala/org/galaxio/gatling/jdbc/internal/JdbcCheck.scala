@@ -26,12 +26,25 @@ object JdbcCheck extends JdbcCheckSupport {
   def results(): Final[JdbcAllRecordCheckType, AllRecordResult] =
     find2Final(allResults)
 
+  def javaRow(rowIndex: Int): Final[JdbcAllRecordCheckType, Map[String, Any]] =
+    find2Final(row(rowIndex).asInstanceOf[CheckBuilder.Find[JdbcAllRecordCheckType, Map[String, Any], AllRecordResult]])
+
+  def javaColumn(columnName: String): Final[JdbcAllRecordCheckType, List[Any]] =
+    find2Final(column(columnName).asInstanceOf[CheckBuilder.Find[JdbcAllRecordCheckType, List[Any], AllRecordResult]])
+
+  def javaCell(columnName: String, rowIndex: Int): Final[JdbcAllRecordCheckType, Any] =
+    find2Final(cell(columnName, rowIndex).asInstanceOf[CheckBuilder.Find[JdbcAllRecordCheckType, Any, AllRecordResult]])
+
   private def toScalaCheck(javaCheck: Object): JdbcCheck = {
     javaCheck match {
       case simpleCheck: Simple[_]                            => simpleCheck.asInstanceOf[Simple[AllRecordResult]]
       case defaultCheck: CheckBuilder.Final.Default[_, _, _] =>
         checkBuilder2JdbcCheck(
-          defaultCheck.asInstanceOf[Default[JdbcAllRecordCheckType, AllRecordResult, AllRecordResult]],
+          defaultCheck.asInstanceOf[Default[JdbcAllRecordCheckType, AllRecordResult, Any]],
+        )
+      case findCheck: CheckBuilder.Find.Default[_, _, _]     =>
+        findCheckBuilder2JdbcCheck(
+          findCheck.asInstanceOf[CheckBuilder.Find.Default[JdbcAllRecordCheckType, AllRecordResult, Any]],
         )
       case unknown                                           => throw new IllegalArgumentException(s"JDBC DSL doesn't support $unknown")
     }

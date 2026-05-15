@@ -64,6 +64,9 @@ public class JdbcActions {
                 .queryP("SELECT * FROM TEST_TABLE WHERE ID = {id}")
                 .params(Map.of("id", 20))
                 .check(simpleCheck(simpleCheckType.NonEmpty),
+                        cell("NAME", 0).saveAs("FIRST_TEST_NAME"),
+                        row(0).saveAs("FIRST_TEST_ROW"),
+                        column("NAME").saveAs("TEST_NAMES"),
                         allResults().saveAs("R"));
     }
 

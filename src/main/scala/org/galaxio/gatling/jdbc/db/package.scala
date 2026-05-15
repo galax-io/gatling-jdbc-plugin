@@ -67,7 +67,7 @@ package object db {
     val md      = resultSet.getMetaData
     val columns = md.getColumnCount
     (1 to columns).foldLeft(Map.empty[String, Any]) { (m, i) =>
-      m + (md.getColumnName(i) -> resultSet.getObject(i))
+      m + (md.getColumnLabel(i) -> resultSet.getObject(i))
     }
   }
 
