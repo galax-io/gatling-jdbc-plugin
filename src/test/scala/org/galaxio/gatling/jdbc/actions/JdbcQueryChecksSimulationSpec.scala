@@ -6,10 +6,10 @@ import org.galaxio.performance.jdbc.test.dataBase
 
 class JdbcQueryChecksSimulationSpec extends Simulation {
 
-  @volatile private var extractedFirstName: Option[String]              = None
-  @volatile private var extractedIds: Option[List[Any]]                 = None
-  @volatile private var extractedAliasedRow: Option[Map[String, Any]]   = None
-  @volatile private var extractedAliasedCell: Option[String]            = None
+  @volatile private var extractedFirstName: Option[String]            = None
+  @volatile private var extractedIds: Option[List[Any]]               = None
+  @volatile private var extractedAliasedRow: Option[Map[String, Any]] = None
+  @volatile private var extractedAliasedCell: Option[String]          = None
 
   private val scn = scenario("JDBC query checks")
     .exec(
