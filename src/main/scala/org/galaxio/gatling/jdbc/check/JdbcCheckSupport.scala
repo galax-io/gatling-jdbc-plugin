@@ -12,8 +12,8 @@ trait JdbcCheckSupport {
   trait JdbcAllRecordCheckType
 
   type AllRecordResult = List[Map[String, Any]]
-  type JdbcRow = Map[String, Any]
-  type JdbcColumn = List[Any]
+  type JdbcRow         = Map[String, Any]
+  type JdbcColumn      = List[Any]
 
   val AllRecordPreparer: Preparer[AllRecordResult, AllRecordResult] = something => something.success
 

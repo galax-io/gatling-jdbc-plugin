@@ -29,7 +29,7 @@ class ResultSetOpsSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll 
   "ResultSetOps" should "use column labels so aliases are available to checks" in {
     val statement = connection.createStatement()
     try {
-      val rs = statement.executeQuery("SELECT ID AS PERSON_ID, NAME AS DISPLAY_NAME FROM PEOPLE")
+      val rs   = statement.executeQuery("SELECT ID AS PERSON_ID, NAME AS DISPLAY_NAME FROM PEOPLE")
       val rows = rs.iterator.toList
 
       rows should have size 1
