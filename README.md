@@ -2,22 +2,51 @@
 
 [![CI](https://github.com/galax-io/gatling-jdbc-plugin/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/galax-io/gatling-jdbc-plugin/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/org.galaxio/gatling-jdbc-plugin_2.13.svg?color=success)](https://search.maven.org/search?q=org.galaxio.gatling-jdbc-plugin)
-[![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 [![codecov](https://codecov.io/github/galax-io/gatling-jdbc-plugin/coverage.svg?branch=main)](https://codecov.io/github/galax-io/gatling-jdbc-plugin?branch=main)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
 JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. Execute SQL queries, inserts, updates, batch operations, and stored procedures against any JDBC-compatible database with connection pooling (HikariCP) and result checks.
 
-Requires Scala 2.13, Java 17+, Gatling 3.11+.
+## Table of Contents
+
+- [Compatibility](#compatibility)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Protocol Configuration](#protocol-configuration)
+- [Actions](#actions)
+- [Checks](#checks)
+- [Transactions](#transactions)
+- [Session Variables](#session-variables)
+- [Examples](#examples)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Compatibility
+
+| Plugin Version | Gatling | Scala | Java |
+|---|---|---|---|
+| 0.17.0+ | 3.13.x | 2.13 | 17+ |
+| 0.10.0 — 0.16.x | 3.11.x | 2.13 | 17+ |
+
+> **Branch strategy:** `main` targets Gatling 3.11.x, `latest/gatling` targets Gatling 3.13.x.
 
 ## Installation
 
-**sbt**:
+### Scala (sbt)
+
 ```scala
 libraryDependencies += "org.galaxio" %% "gatling-jdbc-plugin" % "<version>" % Test
 ```
 
-**Maven**:
+### Java / Kotlin (Gradle Kotlin DSL)
+
+```kotlin
+gatling("org.galaxio:gatling-jdbc-plugin_2.13:<version>")
+```
+
+### Maven
+
 ```xml
 <dependency>
   <groupId>org.galaxio</groupId>
@@ -27,9 +56,88 @@ libraryDependencies += "org.galaxio" %% "gatling-jdbc-plugin" % "<version>" % Te
 </dependency>
 ```
 
-**Gradle (Kotlin DSL)**:
+## Quick Start
+
+### Docker (local PostgreSQL)
+
+```bash
+docker run -d --name gatling-pg \
+  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test \
+  -p 5432:5432 postgres:16
+```
+
+### Minimal Scenario — Scala
+
+```scala
+import org.galaxio.gatling.jdbc.Predef._
+import io.gatling.core.Predef._
+
+class JdbcSimulation extends Simulation {
+  val dbConf = DB
+    .url("jdbc:postgresql://localhost:5432/test")
+    .username("test")
+    .password("test")
+    .maximumPoolSize(10)
+
+  val scn = scenario("JDBC Query")
+    .exec(
+      jdbc("select users")
+        .query("SELECT * FROM users WHERE id = 1")
+        .check(allResults.saveAs("rows"))
+    )
+
+  setUp(scn.inject(atOnceUsers(1))).protocols(dbConf)
+}
+```
+
+### Minimal Scenario — Java
+
+```java
+import static org.galaxio.gatling.jdbc.javaapi.JdbcDsl.*;
+import static io.gatling.javaapi.core.CoreDsl.*;
+
+public class JdbcSimulation extends Simulation {
+  var dbConf = DB()
+      .url("jdbc:postgresql://localhost:5432/test")
+      .username("test")
+      .password("test")
+      .maximumPoolSize(10)
+      .protocolBuilder();
+
+  var scn = scenario("JDBC Query")
+      .exec(
+          jdbc("select users")
+              .query("SELECT * FROM users WHERE id = 1")
+              .check(allResults().saveAs("rows"))
+      );
+
+  { setUp(scn.injectOpen(atOnceUsers(1)).protocols(dbConf)); }
+}
+```
+
+### Minimal Scenario — Kotlin
+
 ```kotlin
-gatling("org.galaxio:gatling-jdbc-plugin_2.13:<version>")
+import org.galaxio.gatling.jdbc.javaapi.JdbcDsl.*
+import io.gatling.javaapi.core.CoreDsl.*
+
+class JdbcSimulation : Simulation() {
+  val dbConf = DB()
+      .url("jdbc:postgresql://localhost:5432/test")
+      .username("test")
+      .password("test")
+      .maximumPoolSize(10)
+      .protocolBuilder()
+
+  val scn = scenario("JDBC Query")
+      .exec(
+          jdbc("select users")
+              .query("SELECT * FROM users WHERE id = 1")
+              .check(allResults().saveAs("rows"))
+      )
+
+  init { setUp(scn.injectOpen(atOnceUsers(1)).protocols(dbConf)) }
+}
 ```
 
 ## Protocol Configuration
@@ -92,57 +200,49 @@ JDBC calls are blocking, so the plugin runs them on a dedicated executor. `block
 val hikariConfig = new HikariConfig()
 hikariConfig.setJdbcUrl("jdbc:postgresql://localhost:5432/test")
 hikariConfig.setMaximumPoolSize(16)
-// ... any HikariCP settings
 
 val dataBase = DB.hikariConfig(hikariConfig)
 ```
 
-## Using Gatling Session Variables
+## Actions
 
-The plugin supports [Gatling Expression Language (EL)](https://docs.gatling.io/reference/script/core/session/el/) in SQL queries.
-Use `#{variableName}` to reference values stored in the Gatling session.
-
-### `query()` with EL
+### Query
 
 ```scala
-exec(session => session.set("tableName", "USERS"))
-.exec(jdbc("dynamic query").query("SELECT * FROM #{tableName} WHERE id = #{id}"))
+jdbc("select users")
+  .query("SELECT * FROM users WHERE status = 'active'")
+  .check(allResults.saveAs("rows"))
 ```
 
-### `queryP()` with EL
-
-`queryP` uses two different syntaxes:
-- `{param}` in SQL string — prepared statement placeholder (replaced with `?`)
-- `"#{var}"` in `.params()` — Gatling EL, resolves value from session at runtime
+### Parameterized Query
 
 ```scala
-exec(
-  jdbc("parameterized query")
-    .queryP("SELECT * FROM TEST_TABLE WHERE id = {id}")
-    .params("id" -> "#{userId}")
+jdbc("find user")
+  .queryP("SELECT * FROM users WHERE id = {id} AND status = {status}")
+  .params("id" -> "#{userId}", "status" -> "active")
+```
+
+### Insert
+
+```scala
+jdbc("insert user")
+  .insertInto("users", "id", "name", "email")
+  .values(Map("id" -> 1, "name" -> "#{userName}", "email" -> "#{email}"))
+```
+
+### Transaction
+
+Execute multiple SQL statements atomically (auto-rollback on failure):
+
+```scala
+jdbc("transfer funds").transaction(
+  "UPDATE accounts SET balance = balance - 100 WHERE id = 1",
+  "UPDATE accounts SET balance = balance + 100 WHERE id = 2",
+  "INSERT INTO audit_log (action) VALUES ('transfer')",
 )
 ```
 
-### Java/Kotlin typed values in `params()` and `values()`
-
-Java and Kotlin map-based DSL methods preserve literal types such as `Boolean`, numeric values, UUIDs, and dates.
-String values still support Gatling EL, so you can mix typed literals and session expressions in the same map.
-
-```java
-jdbc("insert user")
-    .insertInto("USERS", "id", "name", "active")
-    .values(Map.of(
-        "id", 1,
-        "name", "#{userName}",
-        "active", true
-    ));
-```
-
-## Inspecting Query Results
-
-JDBC query checks operate on a result set represented as `List[Map[String, Any]]`.
-
-### Available Result Checks
+## Checks
 
 | Check | Description |
 |-------|-------------|
@@ -151,8 +251,6 @@ JDBC query checks operate on a result set represented as `List[Map[String, Any]]
 | `column(name)` | All values from a column |
 | `cell(name, rowIndex)` | Single value at column + row |
 | `simpleCheck(predicate)` | Custom boolean predicate |
-
-When a row index or column name is invalid, the check fails with a descriptive error message.
 
 ### Scala
 
@@ -180,37 +278,52 @@ jdbc("select users")
     );
 ```
 
+## Session Variables
+
+The plugin supports [Gatling Expression Language (EL)](https://docs.gatling.io/reference/script/core/session/el/) in SQL queries. Use `#{variableName}` to reference session values.
+
+### query() with EL
+
+```scala
+exec(session => session.set("tableName", "USERS"))
+.exec(jdbc("dynamic query").query("SELECT * FROM #{tableName} WHERE id = #{id}"))
+```
+
+### queryP() — Prepared Statements
+
+- `{param}` in SQL — prepared statement placeholder (replaced with `?`)
+- `"#{var}"` in `.params()` — Gatling EL, resolves from session at runtime
+
+```scala
+jdbc("parameterized query")
+  .queryP("SELECT * FROM users WHERE id = {id}")
+  .params("id" -> "#{userId}")
+```
+
+### Java/Kotlin Typed Values
+
+```java
+jdbc("insert user")
+    .insertInto("USERS", "id", "name", "active")
+    .values(Map.of(
+        "id", 1,
+        "name", "#{userName}",
+        "active", true
+    ));
+```
+
 ## Transactions
 
-Execute multiple SQL statements in a single JDBC transaction with automatic commit/rollback.
-If any statement fails, the entire transaction is rolled back.
-
-### Scala
+Execute multiple SQL statements atomically:
 
 ```scala
 jdbc("transfer funds").transaction(
   "UPDATE accounts SET balance = balance - 100 WHERE id = 1",
   "UPDATE accounts SET balance = balance + 100 WHERE id = 2",
-  "INSERT INTO audit_log (action) VALUES ('transfer')",
 )
 ```
 
-### Java / Kotlin
-
-```java
-jdbc("transfer funds").transaction(
-    "UPDATE accounts SET balance = balance - 100 WHERE id = 1",
-    "UPDATE accounts SET balance = balance + 100 WHERE id = 2",
-    "INSERT INTO audit_log (action) VALUES ('transfer')"
-);
-```
-
-Gatling EL expressions (`#{varName}`) are supported in transaction statements.
-
-## Connection Pool Metrics
-
-HikariCP pool metrics (active, idle, waiting, total connections) are logged automatically when the simulation ends.
-This helps diagnose pool exhaustion or connection leaks during load tests.
+If any statement fails, the entire transaction is rolled back. Gatling EL expressions are supported.
 
 ## Examples
 
