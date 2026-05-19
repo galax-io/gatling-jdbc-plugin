@@ -7,6 +7,7 @@ import io.gatling.core.action.Action
 import io.gatling.core.config.GatlingConfiguration
 import io.gatling.core.protocol.ProtocolComponentsRegistry
 import io.gatling.core.session.Session
+import io.gatling.core.stats.NoOpStatsEngine
 import io.gatling.core.stats.StatsEngine
 import io.gatling.core.structure.ScenarioContext
 import org.scalatest.flatspec.AnyFlatSpec
@@ -18,33 +19,7 @@ class ActionBaseSpec extends AnyFlatSpec with Matchers {
     override def nowMillis: Long = System.currentTimeMillis()
   }
 
-  private val noOpStatsEngine: StatsEngine = new StatsEngine {
-    override def start(): Unit                                                             = ()
-    override def stop(controller: akka.actor.ActorRef, exception: Option[Exception]): Unit = ()
-    override def logUserStart(scenario: String): Unit                                      = ()
-    override def logUserEnd(scenario: String): Unit                                        = ()
-    override def logResponse(
-        scenario: String,
-        groups: List[String],
-        requestName: String,
-        startTimestamp: Long,
-        endTimestamp: Long,
-        status: Status,
-        responseCode: Option[String],
-        message: Option[String],
-    ): Unit                                                                                = ()
-    override def logGroupEnd(
-        scenario: String,
-        groupBlock: io.gatling.core.session.GroupBlock,
-        exitTimestamp: Long,
-    ): Unit                                                                                = ()
-    override def logRequestCrash(
-        scenario: String,
-        groups: List[String],
-        requestName: String,
-        error: String,
-    ): Unit                                                                                = ()
-  }
+  private val noOpStatsEngine: StatsEngine = new NoOpStatsEngine
 
   private val coreComponents = new CoreComponents(
     actorSystem = null,

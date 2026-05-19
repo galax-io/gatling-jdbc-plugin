@@ -1,6 +1,6 @@
 package org.galaxio.gatling.javaapi.protocol;
 
-import scala.compat.java8.DurationConverters;
+import scala.jdk.javaapi.DurationConverters;
 
 import java.time.Duration;
 
@@ -23,15 +23,7 @@ public class JdbcProtocolBuilderConnectionSettingsStep {
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.minimumIdleConnections(newValue));
     }
 
-    public JdbcProtocolBuilderConnectionSettingsStep blockingPoolSize(Integer newValue){
-        return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.blockingPoolSize(newValue));
-    }
-
     public JdbcProtocolBuilderConnectionSettingsStep connectionTimeout(Duration newValue){
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.connectionTimeout(DurationConverters.toScala(newValue)));
-    }
-
-    public JdbcProtocolBuilderConnectionSettingsStep queryTimeout(Duration newValue){
-        return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.queryTimeout(DurationConverters.toScala(newValue)));
     }
 }
