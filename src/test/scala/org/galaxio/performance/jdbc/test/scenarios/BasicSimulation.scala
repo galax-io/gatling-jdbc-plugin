@@ -36,7 +36,5 @@ class BasicSimulation {
     }
     .exec(Actions.checkBatchTestTable)
     .exec(Actions.checkBatchTT)
-    .exec(session => session.set("elId", 1))
-    .exec(Actions.selectWithEL)
 
 }

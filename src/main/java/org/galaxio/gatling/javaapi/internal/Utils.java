@@ -13,17 +13,10 @@ public final class Utils {
                         .entrySet()
                         .stream()
                         .map(pair ->
-                                scala.Tuple2.apply(pair.getKey(), toExpression(pair.getValue()))
+                                scala.Tuple2.apply(pair.getKey(), Expressions.toExpression(pair.getValue().toString(), Object.class))
                         ).toList()
                         .stream()
                         .toList())
                 .toSeq();
-    }
-
-    private static scala.Function1<io.gatling.core.session.Session, io.gatling.commons.validation.Validation<Object>> toExpression(Object value) {
-        if (value instanceof String stringValue) {
-            return Expressions.toExpression(stringValue, Object.class);
-        }
-        return Expressions.toStaticValueExpression(value);
     }
 }

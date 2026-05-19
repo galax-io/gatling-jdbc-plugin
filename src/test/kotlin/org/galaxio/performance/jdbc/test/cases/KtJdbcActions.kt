@@ -28,23 +28,14 @@ object KtJdbcActions {
 
     fun insertTest(): DBInsertActionBuilder {
         return jdbc("INSERT TEST")
-                .insertInto("TEST_TABLE", "id", "name", "flag")
-                .values(mapOf("id" to 2, "name" to "Test3", "flag" to true))
+                .insertInto("TEST_TABLE", "id", "name")
+                .values(mapOf("id" to 2, "name" to "Test3"))
     }
 
     fun callTest(): DBCallActionBuilder {
         return jdbc("CALL PROCEDURE TEST")
                 .call("TEST_PROCEDURE")
                 .params(mapOf("p1" to "value1", "p2" to 24L))
-    }
-
-    fun selectInsertedTestBoolean(): QueryActionBuilder {
-        return jdbc("SELECT INSERTED TEST BOOLEAN")
-            .query("SELECT FLAG FROM TEST_TABLE WHERE ID = 2")
-            .check(
-                simpleCheck(simpleCheckType.NonEmpty),
-                cell("FLAG", 0).saveAs("insertedTestFlag")
-            )
     }
 
     fun batchTest(): BatchActionBuilder {
@@ -69,9 +60,6 @@ object KtJdbcActions {
                 .queryP("SELECT * FROM TEST_TABLE WHERE ID = {id}")
                 .params(mapOf("id" to 20))
                 .check(simpleCheck(simpleCheckType.NonEmpty),
-                        cell("NAME", 0).saveAs("FIRST_TEST_NAME"),
-                        row(0).saveAs("FIRST_TEST_ROW"),
-                        column("NAME").saveAs("TEST_NAMES"),
                         allResults().saveAs("R"))
     }
 

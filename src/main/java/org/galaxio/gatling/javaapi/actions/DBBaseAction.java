@@ -41,15 +41,6 @@ public final class DBBaseAction{
         return new QueryActionBuilder(wrapped.query(Expressions.toStringExpression(sql)));
     }
 
-    public TransactionActionBuilder transaction(String... statements) {
-        return new TransactionActionBuilder(
-            wrapped.transaction(
-                asScala(Arrays.stream(statements)
-                    .map(Expressions::toStringExpression)
-                    .toList()).toSeq()
-            ));
-    }
-
     public BatchActionBuilder batch(BatchAction... actions) {
         return new BatchActionBuilder(
             wrapped.batch(

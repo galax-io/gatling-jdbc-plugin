@@ -9,15 +9,7 @@ lazy val root = (project in file("."))
     Gatling / publishArtifact   := false,
     GatlingIt / publishArtifact := false,
     libraryDependencies ++= gatling ++ gatlingCore,
-    libraryDependencies ++= Seq(hikari, h2jdbc, scalatest),
-    libraryDependencies ++= Seq(
-      testcontainersScalatest,
-      testcontainersPostgres,
-      testcontainersMysql,
-      postgresql,
-      mysql,
-    ),
-    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-l", "org.galaxio.gatling.jdbc.tags.DockerTest"),
+    libraryDependencies ++= Seq(hikari, h2jdbc),
     scalacOptions ++= Seq(
       "-encoding",
       "UTF-8",            // Option and arguments on same line

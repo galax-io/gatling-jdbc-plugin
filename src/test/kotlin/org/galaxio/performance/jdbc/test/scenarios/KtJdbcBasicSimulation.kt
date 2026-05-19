@@ -11,11 +11,6 @@ object KtJdbcBasicSimulation {
         .exec(KtJdbcActions.createTable())
         .exec(KtJdbcActions.createprocedure())
         .exec(KtJdbcActions.insertTest())
-        .exec(KtJdbcActions.selectInsertedTestBoolean())
-        .exec { session ->
-            check(session.getBoolean("insertedTestFlag")) { "Expected insertedTestFlag to be true" }
-            session
-        }
         .exec(KtJdbcActions.callTest())
         .exec(KtJdbcActions.batchTest())
         .exec(KtJdbcActions.selectTest())

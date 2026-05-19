@@ -50,24 +50,14 @@ package object db {
       }
 
     def substituteParams: String = {
-      val result   = new StringBuilder(sql.length)
-      val name     = new StringBuilder(16)
-      var inBraces = false
-
-      sql.foreach {
-        case '{' if !inBraces =>
-          inBraces = true
-          name.clear()
-        case '}' if inBraces  =>
-          result.append(' ').append(paramValueToSql(name.toString().trim))
-          inBraces = false
-        case c if inBraces    =>
-          name.append(c)
-        case c                =>
-          result.append(c)
-      }
-
-      result.toString()
+      sql
+        .foldLeft(("", "", false)) {
+          case ((r, curName, false), '{') => (r, curName, true)
+          case ((r, curName, true), '}')  => (s"$r ${paramValueToSql(curName.trim)}", "", false)
+          case ((r, curName, true), c)    => (r, s"$curName$c", true)
+          case ((r, curName, false), c)   => (s"$r$c", curName, false)
+        }
+        ._1
     }
 
     def withOutParams(ps: Seq[(String, Int)]): SqlWithParam = SqlWithParam(sql, params, ps)
@@ -77,7 +67,7 @@ package object db {
     val md      = resultSet.getMetaData
     val columns = md.getColumnCount
     (1 to columns).foldLeft(Map.empty[String, Any]) { (m, i) =>
-      m + (md.getColumnLabel(i) -> resultSet.getObject(i))
+      m + (md.getColumnName(i) -> resultSet.getObject(i))
     }
   }
 

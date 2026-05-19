@@ -32,17 +32,8 @@ public class JdbcActions {
 
     public static DBInsertActionBuilder insertTest(){
         return jdbc("INSERT TEST")
-                .insertInto("TEST_TABLE", "id", "name", "flag")
-                .values(Map.of("id", 2, "name", "Test3", "flag", true));
-    }
-
-    public static QueryActionBuilder selectInsertedTestBoolean() {
-        return jdbc("SELECT INSERTED TEST BOOLEAN")
-                .query("SELECT FLAG FROM TEST_TABLE WHERE ID = 2")
-                .check(
-                        simpleCheck(simpleCheckType.NonEmpty),
-                        cell("FLAG", 0).saveAs("insertedTestFlag")
-                );
+                .insertInto("TEST_TABLE", "id", "name")
+                .values(Map.of("id", 2, "name", "Test3"));
     }
 
     public static DBCallActionBuilder callTest(){
@@ -73,9 +64,6 @@ public class JdbcActions {
                 .queryP("SELECT * FROM TEST_TABLE WHERE ID = {id}")
                 .params(Map.of("id", 20))
                 .check(simpleCheck(simpleCheckType.NonEmpty),
-                        cell("NAME", 0).saveAs("FIRST_TEST_NAME"),
-                        row(0).saveAs("FIRST_TEST_ROW"),
-                        column("NAME").saveAs("TEST_NAMES"),
                         allResults().saveAs("R"));
     }
 
@@ -83,13 +71,6 @@ public class JdbcActions {
         return jdbc("SELECT SOME")
                 .query("SELECT * FROM TEST_TABLE")
                 .check(allResults().saveAs("RR"));
-    }
-
-    public static QueryActionBuilder selectWithEL(){
-        return jdbc("SELECT WITH EL")
-                .query("SELECT * FROM TEST_TABLE WHERE ID = #{elId}")
-                .check(simpleCheck(simpleCheckType.NonEmpty),
-                        allResults().saveAs("elResult"));
     }
 
     public static QueryActionBuilder checkTestTableAfterBatch(){

@@ -70,25 +70,22 @@ case class DBQueryAction(
             Some("ERROR"),
             Some(exception.getMessage),
           ),
-      )).onFailure { m =>
-      val message =
-        if (m.contains("No attribute named"))
-          s"$m. Hint: ensure Gatling EL variable (e.g. #{varName}) is set in session before this action"
-        else m
-      requestName(session).map { rn =>
-        ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, message)
-        executeNext(
-          session,
-          ctx.coreComponents.clock.nowMillis,
-          ctx.coreComponents.clock.nowMillis,
-          KO,
-          next,
-          rn,
-          Some("ERROR"),
-          Some(message),
-        )
-      }
-    }
+      ))
+      .onFailure(m =>
+        requestName(session).map { rn =>
+          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
+          executeNext(
+            session,
+            ctx.coreComponents.clock.nowMillis,
+            ctx.coreComponents.clock.nowMillis,
+            KO,
+            next,
+            rn,
+            Some("ERROR"),
+            Some(m),
+          )
+        },
+      )
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }
