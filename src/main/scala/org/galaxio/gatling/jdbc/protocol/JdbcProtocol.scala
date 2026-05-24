@@ -32,7 +32,9 @@ object JdbcProtocol {
       protocol => {
         val blockingPool   = Executors.newFixedThreadPool(protocol.blockingPoolSize, new JdbcThreadFactory("jdbc-blocking"))
         val connectionPool = new HikariDataSource(protocol.hikariConfig)
-        JdbcComponents(JDBCClient(connectionPool, blockingPool))
+        val client         = JDBCClient(connectionPool, blockingPool)
+        coreComponents.actorSystem.registerOnTermination { client.close() }
+        JdbcComponents(client)
       }
   }
 

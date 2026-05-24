@@ -277,7 +277,6 @@ jdbc("select users")
         allResults().saveAs("rows")
     );
 ```
-<<<<<<< HEAD
 
 ## Session Variables
 
@@ -357,5 +356,3 @@ sbt scalafmtAll
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.
-=======
->>>>>>> f47e7c0 (fix(protocol): bound jdbc blocking threads)
