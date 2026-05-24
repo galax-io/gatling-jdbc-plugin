@@ -9,7 +9,7 @@ lazy val root = (project in file("."))
     Gatling / publishArtifact   := false,
     GatlingIt / publishArtifact := false,
     libraryDependencies ++= gatling ++ gatlingCore,
-    libraryDependencies ++= Seq(hikari, h2jdbc),
+    libraryDependencies ++= Seq(hikari, h2jdbc, scalatest),
     scalacOptions ++= Seq(
       "-encoding",
       "UTF-8",            // Option and arguments on same line

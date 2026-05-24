@@ -8,7 +8,7 @@ import scala.concurrent.duration._
 case object JdbcProtocolBuilderBase {
 
   def url(url: String): JdbcProtocolBuilderUsernameStep    = JdbcProtocolBuilderUsernameStep(url)
-  def hikariConfig(cfg: HikariConfig): JdbcProtocolBuilder = JdbcProtocolBuilder(cfg)
+  def hikariConfig(cfg: HikariConfig): JdbcProtocolBuilder = JdbcProtocolBuilder(cfg, cfg.getMaximumPoolSize)
 
 }
 
@@ -31,6 +31,7 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     password: String,
     maximumPoolSize: Int = 10,
     minimumIdleConnections: Int = 10,
+    blockingPoolSize: Option[Int] = None,
     connectionTimeout: FiniteDuration = 1.minute,
 ) {
   def protocolBuilder: JdbcProtocolBuilder = {
@@ -43,19 +44,21 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     hikariConfig.setMinimumIdle(minimumIdleConnections)
     hikariConfig.setConnectionTimeout(connectionTimeout.toMillis)
 
-    JdbcProtocolBuilder(hikariConfig)
+    JdbcProtocolBuilder(hikariConfig, blockingPoolSize.getOrElse(maximumPoolSize))
   }
 
   def maximumPoolSize(newValue: Int): JdbcProtocolBuilderConnectionSettingsStep              =
     this.copy(maximumPoolSize = newValue)
   def minimumIdleConnections(newValue: Int): JdbcProtocolBuilderConnectionSettingsStep       =
     this.copy(minimumIdleConnections = newValue)
+  def blockingPoolSize(newValue: Int): JdbcProtocolBuilderConnectionSettingsStep             =
+    this.copy(blockingPoolSize = Some(newValue))
   def connectionTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep =
     this.copy(connectionTimeout = newValue)
 }
 
-final case class JdbcProtocolBuilder(hikariConfig: HikariConfig) {
+final case class JdbcProtocolBuilder(hikariConfig: HikariConfig, blockingPoolSize: Int) {
 
-  def build: Protocol = JdbcProtocol(hikariConfig)
+  def build: Protocol = JdbcProtocol(hikariConfig, blockingPoolSize)
 
 }
