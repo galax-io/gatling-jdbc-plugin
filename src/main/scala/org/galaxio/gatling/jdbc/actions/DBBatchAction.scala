@@ -69,7 +69,7 @@ final case class DBBatchAction(
         _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, resolvedBatchName, None, None),
         e =>
           executeNext(
-            session,
+            session.markAsFailed,
             startTime,
             ctx.coreComponents.clock.nowMillis,
             KO,
@@ -83,7 +83,7 @@ final case class DBBatchAction(
         batchName(session).map { rn =>
           ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
           executeNext(
-            session,
+            session.markAsFailed,
             ctx.coreComponents.clock.nowMillis,
             ctx.coreComponents.clock.nowMillis,
             KO,
