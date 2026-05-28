@@ -49,19 +49,18 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
   private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
     ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)
 
-  private def statementForBatchResource: ResourceFut[StatementWrapper[Future]] =
+  private def connectionForBatchResource: ResourceFut[ConnectionWrapper[Future]] =
     for {
       conn       <- connectionResource
       autoCommit <- ResourceFut.liftFuture(conn.getAutoCommit)
       _          <- ResourceFut.liftFuture(conn.setAutoCommit(false))
-      stmt       <- ResourceFut.make(conn.createStatement.map(s => statement(s, ec, queryTimeoutSeconds)))(s =>
+      _          <- ResourceFut.make(Future.successful(()))(_ =>
                       for {
                         _ <- conn.commit
                         _ <- conn.setAutoCommit(autoCommit)
-                        _ <- s.close
                       } yield (),
                     )
-    } yield stmt
+    } yield conn
 
   private def statementResource: ResourceFut[StatementWrapper[Future]] =
     for {
@@ -122,10 +121,23 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
 
   def batch[U](queries: Seq[SqlWithParam])(s: Array[Int] => U, f: Throwable => U): Unit =
     withCompletion(
-      statementForBatchResource.use(stmt =>
+      connectionForBatchResource.use(conn =>
         queries
-          .foldLeft(Future.successful(())) { (acc, query) => acc.flatMap(_ => stmt.addBatch(query.substituteParams)) }
-          .flatMap(_ => stmt.executeBatch),
+          .map { query =>
+            val interpolated = Interpolator.interpolate(query.sql)
+            conn
+              .prepareStatement(interpolated.queryString)
+              .flatMap { ps =>
+                val pstmt = preparedStatement(ps, ec)
+                pstmt
+                  .setParams(interpolated, query.params.toMap)
+                  .flatMap(_ => pstmt.executeUpdate)
+                  .transformWith(result => pstmt.close.flatMap(_ => Future.fromTry(result)))
+              }
+          }
+          .foldLeft(Future.successful(Array.empty[Int])) { (acc, fut) =>
+            acc.flatMap(arr => fut.map(count => arr :+ count))
+          },
       ),
     )(s, f)
 
