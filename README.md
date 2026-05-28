@@ -146,6 +146,7 @@ class JdbcSimulation : Simulation() {
 
 ```scala
 import org.galaxio.gatling.jdbc.Predef._
+import scala.concurrent.duration._
 
 val dataBase = DB
   .url("jdbc:postgresql://localhost:5432/test")

@@ -42,7 +42,10 @@ object statements {
     def setParams(interpolated: InterpolatorCtx, inParams: Map[String, ParamVal], outParams: Map[String, Int]): Future[Unit]
   }
 
-  private final class StatementWrapperImpl(stmt: Statement)(implicit ec: ExecutionContext) extends StatementWrapper[Future] {
+  private final class StatementWrapperImpl(stmt: Statement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
+      extends StatementWrapper[Future] {
+    queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+
     override def execute(sql: String): Future[Boolean] = Future(stmt.execute(sql))
 
     override def close: Future[Unit] = Future(stmt.close())
@@ -52,8 +55,9 @@ object statements {
     override def executeBatch: Future[Array[Int]] = Future(stmt.executeBatch())
   }
 
-  private final class PreparedStatementWrapperImpl(stmt: PreparedStatement)(implicit ec: ExecutionContext)
+  private final class PreparedStatementWrapperImpl(stmt: PreparedStatement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
       extends PreparedStatementWrapper[Future] {
+    queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
     override def executeQuery: Future[ResultSet] = Future(stmt.executeQuery())
 
     override def close: Future[Unit] = Future(stmt.close())
@@ -93,8 +97,9 @@ object statements {
     }
   }
 
-  private final class CallableStatementWrapperImpl(stmt: CallableStatement)(implicit ec: ExecutionContext)
+  private final class CallableStatementWrapperImpl(stmt: CallableStatement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
       extends CallableStatementWrapper[Future] {
+    queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
     override def close: Future[Unit] = Future(stmt.close())
 
     override def executeUpdate: Future[Int] = Future(stmt.executeUpdate())
@@ -142,11 +147,20 @@ object statements {
     override def setBoolean(index: Int, value: Boolean): Future[Unit] = Future(stmt.setBoolean(index, value))
   }
 
-  def statement(statement: Statement, ec: ExecutionContext): StatementWrapper[Future] = new StatementWrapperImpl(statement)(ec)
+  def statement(statement: Statement, ec: ExecutionContext, queryTimeoutSeconds: Option[Int] = None): StatementWrapper[Future] =
+    new StatementWrapperImpl(statement, queryTimeoutSeconds)(ec)
 
-  def preparedStatement(preparedStatement: PreparedStatement, ec: ExecutionContext): PreparedStatementWrapper[Future] =
-    new PreparedStatementWrapperImpl(preparedStatement)(ec)
+  def preparedStatement(
+      preparedStatement: PreparedStatement,
+      ec: ExecutionContext,
+      queryTimeoutSeconds: Option[Int] = None,
+  ): PreparedStatementWrapper[Future] =
+    new PreparedStatementWrapperImpl(preparedStatement, queryTimeoutSeconds)(ec)
 
-  def callableStatement(callableStatement: CallableStatement, ec: ExecutionContext): CallableStatementWrapper[Future] =
-    new CallableStatementWrapperImpl(callableStatement)(ec)
+  def callableStatement(
+      callableStatement: CallableStatement,
+      ec: ExecutionContext,
+      queryTimeoutSeconds: Option[Int] = None,
+  ): CallableStatementWrapper[Future] =
+    new CallableStatementWrapperImpl(callableStatement, queryTimeoutSeconds)(ec)
 }
