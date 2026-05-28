@@ -15,7 +15,14 @@ object ResourceFut {
           res    <- acquire
           result <- f(res).transformWith {
                       case Success(value)     => release(res).map(_ => value)
-                      case Failure(exception) => release(res).flatMap(_ => Future.failed[U](exception))
+                      case Failure(exception) =>
+                        release(res).transformWith { releaseResult =>
+                          releaseResult match {
+                            case Failure(releaseException) => exception.addSuppressed(releaseException)
+                            case _                         => ()
+                          }
+                          Future.failed[U](exception)
+                        }
                     }
 
         } yield result
