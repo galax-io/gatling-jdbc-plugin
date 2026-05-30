@@ -7,6 +7,7 @@ import statements.{CallableStatementWrapper, PreparedStatementWrapper, Statement
 
 import java.util.concurrent.ExecutorService
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Success}
 
 object JDBCClient {
@@ -36,11 +37,14 @@ object JDBCClient {
     }
   }
 
-  def apply(pool: HikariDataSource, blockingPool: ExecutorService): JDBCClient = new JDBCClient(pool, blockingPool)
+  def apply(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None): JDBCClient =
+    new JDBCClient(pool, blockingPool, queryTimeout)
 }
 
-class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService) {
+class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None) {
   private implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(blockingPool)
+
+  private val queryTimeoutSeconds: Option[Int] = queryTimeout.map(d => math.max(0, d.toSeconds.toInt))
 
   private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
     ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)
@@ -50,7 +54,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService) {
       conn       <- connectionResource
       autoCommit <- ResourceFut.liftFuture(conn.getAutoCommit)
       _          <- ResourceFut.liftFuture(conn.setAutoCommit(false))
-      stmt       <- ResourceFut.make(conn.createStatement.map(statement(_, ec)))(s =>
+      stmt       <- ResourceFut.make(conn.createStatement.map(s => statement(s, ec, queryTimeoutSeconds)))(s =>
                       for {
                         _ <- conn.commit
                         _ <- conn.setAutoCommit(autoCommit)
@@ -62,7 +66,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService) {
   private def statementResource: ResourceFut[StatementWrapper[Future]] =
     for {
       conn <- connectionResource
-      stmt <- ResourceFut.make(conn.createStatement.map(statement(_, ec)))(_.close)
+      stmt <- ResourceFut.make(conn.createStatement.map(s => statement(s, ec, queryTimeoutSeconds)))(_.close)
     } yield stmt
 
   private def preparedStatementResource(
@@ -75,7 +79,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService) {
       stmt            <- ResourceFut.make(
                            conn
                              .prepareStatement(interpolatedCtx.queryString)
-                             .map(preparedStatement(_, ec)),
+                             .map(s => preparedStatement(s, ec, queryTimeoutSeconds)),
                          )(_.close)
       _               <- ResourceFut.liftFuture(stmt.setParams(interpolatedCtx, params))
     } yield stmt
@@ -91,7 +95,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService) {
       stmt            <- ResourceFut.make(
                            conn
                              .prepareCall(s"${interpolatedCtx.queryString}")
-                             .map(callableStatement(_, ec)),
+                             .map(s => callableStatement(s, ec, queryTimeoutSeconds)),
                          )(_.close)
       _               <- ResourceFut.liftFuture(stmt.setParams(interpolatedCtx, inParams, outParams))
     } yield stmt
