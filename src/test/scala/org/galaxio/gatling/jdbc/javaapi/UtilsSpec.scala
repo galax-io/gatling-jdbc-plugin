@@ -11,9 +11,8 @@ import java.lang.reflect.{InvocationHandler, Proxy}
 import java.util.{Map => JMap, HashMap => JHashMap, UUID}
 import java.util.concurrent.TimeUnit
 
-/** Regression tests for issue #26:
-  * Java/Kotlin map-based parameter helpers must preserve original runtime types
-  * instead of coercing every value to String via toString().
+/** Regression tests for issue #26: Java/Kotlin map-based parameter helpers must preserve original runtime types instead of
+  * coercing every value to String via toString().
   */
 class UtilsSpec extends AnyFlatSpec with Matchers {
 
@@ -74,7 +73,7 @@ class UtilsSpec extends AnyFlatSpec with Matchers {
   }
 
   it should "preserve null values as null" in {
-    val m = new JHashMap[String, Object]()
+    val m    = new JHashMap[String, Object]()
     m.put("v", null)
     val seq  = Utils.getSeq(m)
     val pair = seq.find { case (k, _) => k == "v" }.getOrElse(fail("key 'v' not found"))
