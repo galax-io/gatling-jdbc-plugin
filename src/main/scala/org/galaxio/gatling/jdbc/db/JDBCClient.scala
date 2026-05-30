@@ -124,8 +124,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
     withCompletion(
       statementForBatchResource.use(stmt =>
         queries
-          .map(query => stmt.addBatch(query.substituteParams))
-          .reduce((f1, f2) => f1.flatMap(_ => f2))
+          .foldLeft(Future.successful(())) { (acc, query) => acc.flatMap(_ => stmt.addBatch(query.substituteParams)) }
           .flatMap(_ => stmt.executeBatch),
       ),
     )(s, f)
