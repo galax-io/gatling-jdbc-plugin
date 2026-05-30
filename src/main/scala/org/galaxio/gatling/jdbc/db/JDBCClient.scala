@@ -7,7 +7,7 @@ import statements.{CallableStatementWrapper, PreparedStatementWrapper, Statement
 
 import java.util.concurrent.ExecutorService
 import scala.concurrent.{ExecutionContext, Future}
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.{Failure, Success}
 
 object JDBCClient {
@@ -44,7 +44,11 @@ object JDBCClient {
 class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None) {
   private implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(blockingPool)
 
-  private val queryTimeoutSeconds: Option[Int] = queryTimeout.map(d => math.max(0, d.toSeconds.toInt))
+  private val queryTimeoutSeconds: Option[Int] = queryTimeout.map { d =>
+    val secs = d.toSeconds
+    if (secs == 0 && d > Duration.Zero) 1 // round up sub-second to 1s minimum
+    else math.max(0, secs.toInt)
+  }
 
   private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
     ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)
