@@ -112,11 +112,41 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
   def executeUpdate[U](sqlQuery: String, params: Seq[(String, ParamVal)])(s: Int => U, f: Throwable => U): Unit =
     withCompletion(preparedStatementResource(sqlQuery, params.toMap).use(_.executeUpdate))(s, f)
 
+  /** Execute a stored-procedure call and return the OUT parameter values surfaced by the database.
+    *
+    * If no OUT parameters are declared the success callback receives an empty map. The update-count returned by
+    * `executeUpdate` is intentionally not surfaced because stored procedures do not reliably report it across drivers;
+    * callers that need row counts should use [[executeUpdate]] instead.
+    *
+    * @param sqlCall
+    *   the CALL statement string (with named placeholders, e.g. `CALL my_proc({in1}, {out1})`)
+    * @param params
+    *   IN parameter bindings
+    * @param outParams
+    *   OUT parameter declarations: name → java.sql.Types constant
+    * @param s
+    *   success callback receiving a map of OUT parameter name → value
+    * @param f
+    *   failure callback
+    */
   def call[U](sqlCall: String, params: Seq[(String, ParamVal)], outParams: Seq[(String, Int)])(
-      s: Int => U,
+      s: Map[String, Any] => U,
       f: Throwable => U,
-  ): Unit =
-    withCompletion(callableStatementResource(sqlCall, params.toMap, outParams.toMap).use(_.executeUpdate))(s, f)
+  ): Unit = {
+    val result = callableStatementResource(sqlCall, params.toMap, outParams.toMap).use { stmt =>
+      stmt.executeUpdate.flatMap { _ =>
+        if (outParams.isEmpty) {
+          scala.concurrent.Future.successful(Map.empty[String, Any])
+        } else {
+          val interpolated = Interpolator.interpolate(sqlCall)
+          // Collect only OUT-parameter name → index mappings from the interpolated index map
+          val outParamIndexes = interpolated.m.filter { case (name, _) => outParams.exists(_._1 == name) }
+          stmt.getOutParams(outParamIndexes)
+        }
+      }
+    }
+    withCompletion(result)(s, f)
+  }
 
   def batch[U](queries: Seq[SqlWithParam])(s: Array[Int] => U, f: Throwable => U): Unit =
     withCompletion(

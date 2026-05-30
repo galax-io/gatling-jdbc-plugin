@@ -43,7 +43,12 @@ case class DBCallAction(
 
     } yield dbClient
       .call(sql.sql, sql.params, sql.outParams)(
-        _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None),
+        outValues => {
+          // Surface each OUT parameter value into the Gatling session under its parameter name so that
+          // downstream actions and checks can reference them via session attributes (e.g. "#{outParamName}").
+          val updatedSession = outValues.foldLeft(session) { case (s, (name, value)) => s.set(name, value) }
+          executeNext(updatedSession, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None)
+        },
         e =>
           executeNext(
             session.markAsFailed,

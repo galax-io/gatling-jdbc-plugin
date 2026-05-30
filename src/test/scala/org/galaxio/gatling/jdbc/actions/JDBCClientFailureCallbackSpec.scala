@@ -103,7 +103,7 @@ class JDBCClientFailureCallbackSpec extends AnyFlatSpec with Matchers {
       var successCalled                    = false
 
       client.call("CALL no_such_procedure()", Seq.empty, Seq.empty)(
-        _ => { successCalled = true; latch.countDown() },
+        (_: Map[String, Any]) => { successCalled = true; latch.countDown() },
         t => { failureCaught = Some(t); latch.countDown() },
       )
 

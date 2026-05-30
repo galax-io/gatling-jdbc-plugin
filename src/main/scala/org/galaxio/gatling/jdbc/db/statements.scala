@@ -42,6 +42,15 @@ object statements {
     def setTimestamp(index: Int, value: java.sql.Timestamp): F[Unit]
     def registerOutParameter(index: Int, sqlType: Int): F[Unit]
     def setParams(interpolated: InterpolatorCtx, inParams: Map[String, ParamVal], outParams: Map[String, Int]): Future[Unit]
+
+    /** Read all registered OUT parameters after execution.
+      *
+      * @param outParams
+      *   map of parameter name to its 1-based JDBC index (as built by the interpolator)
+      * @return
+      *   a map of parameter name to the value returned by the database
+      */
+    def getOutParams(outParams: Map[String, List[Int]]): F[Map[String, Any]]
   }
 
   private final class StatementWrapperImpl(stmt: Statement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
@@ -153,6 +162,12 @@ object statements {
     }
 
     override def setBoolean(index: Int, value: Boolean): Future[Unit] = Future(stmt.setBoolean(index, value))
+
+    override def getOutParams(outParams: Map[String, List[Int]]): Future[Map[String, Any]] =
+      Future(outParams.map { case (name, indexes) =>
+        // Use the first index for each named parameter (names are unique in stored proc signatures)
+        name -> stmt.getObject(indexes.head)
+      })
   }
 
   def statement(statement: Statement, ec: ExecutionContext, queryTimeoutSeconds: Option[Int] = None): StatementWrapper[Future] =
