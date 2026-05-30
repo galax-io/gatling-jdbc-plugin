@@ -54,12 +54,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
       conn       <- connectionResource
       autoCommit <- ResourceFut.liftFuture(conn.getAutoCommit)
       _          <- ResourceFut.liftFuture(conn.setAutoCommit(false))
-      _          <- ResourceFut.make(Future.successful(()))(_ =>
-                      for {
-                        _ <- conn.commit
-                        _ <- conn.setAutoCommit(autoCommit)
-                      } yield (),
-                    )
+      _          <- ResourceFut.make(Future.successful(()))(_ => conn.setAutoCommit(autoCommit))
     } yield conn
 
   private def statementResource: ResourceFut[StatementWrapper[Future]] =
@@ -141,6 +136,10 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
             }
           }
           .map(_.toArray)
+          .transformWith {
+            case Success(result)    => conn.commit.map(_ => result)
+            case Failure(exception) => conn.rollback.flatMap(_ => Future.failed(exception))
+          }
       },
     )(s, f)
 

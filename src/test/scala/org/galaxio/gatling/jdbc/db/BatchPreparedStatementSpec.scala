@@ -204,4 +204,19 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
     result shouldBe a[Right[_, _]]
     countRows() shouldBe 1
   }
+
+  it should "rollback all changes when a batch query fails mid-way" in {
+    clearTable()
+    // Two SQL groups: first inserts row 40 (succeeds), second tries to insert a duplicate id 40 (fails with PK violation).
+    // Both should be rolled back — table must remain empty after the failed batch.
+    val queries = Seq(
+      SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
+        .withParamsMap(Map("id" -> 40, "name" -> "first", "flag" -> true, "val" -> 1.0)),
+      SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
+        .withParamsMap(Map("id" -> 40, "name" -> "duplicate-pk", "flag" -> false, "val" -> 2.0)),
+    )
+    val result  = await[Array[Int]](client.batch(queries))
+    result shouldBe a[Left[_, _]]
+    countRows() shouldBe 0
+  }
 }
