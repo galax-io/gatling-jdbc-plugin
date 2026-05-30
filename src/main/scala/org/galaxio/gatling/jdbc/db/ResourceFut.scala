@@ -18,8 +18,9 @@ object ResourceFut {
                       case Failure(exception) =>
                         release(res).transformWith { releaseResult =>
                           releaseResult match {
-                            case Failure(releaseException) => exception.addSuppressed(releaseException)
-                            case _                         => ()
+                            case Failure(releaseException) if releaseException ne exception =>
+                              exception.addSuppressed(releaseException)
+                            case _                                                          => ()
                           }
                           Future.failed[U](exception)
                         }
