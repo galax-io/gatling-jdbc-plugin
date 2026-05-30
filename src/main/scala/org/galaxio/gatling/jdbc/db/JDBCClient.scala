@@ -122,19 +122,18 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
   def batch[U](queries: Seq[SqlWithParam])(s: Array[Int] => U, f: Throwable => U): Unit =
     withCompletion(
       connectionForBatchResource.use(conn =>
-        queries
-          .map { query =>
-            val interpolated = Interpolator.interpolate(query.sql)
-            conn
-              .prepareStatement(interpolated.queryString)
-              .flatMap { ps =>
-                val pstmt = preparedStatement(ps, ec)
-                pstmt
-                  .setParams(interpolated, query.params.toMap)
-                  .flatMap(_ => pstmt.executeUpdate)
-                  .transformWith(result => pstmt.close.flatMap(_ => Future.fromTry(result)))
-              }
-          }
+        queries.map { query =>
+          val interpolated = Interpolator.interpolate(query.sql)
+          conn
+            .prepareStatement(interpolated.queryString)
+            .flatMap { ps =>
+              val pstmt = preparedStatement(ps, ec)
+              pstmt
+                .setParams(interpolated, query.params.toMap)
+                .flatMap(_ => pstmt.executeUpdate)
+                .transformWith(result => pstmt.close.flatMap(_ => Future.fromTry(result)))
+            }
+        }
           .foldLeft(Future.successful(Array.empty[Int])) { (acc, fut) =>
             acc.flatMap(arr => fut.map(count => arr :+ count))
           },

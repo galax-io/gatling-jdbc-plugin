@@ -9,9 +9,8 @@ import java.time.LocalDateTime
 import java.util.UUID
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 
-/** Regression tests for issue #33: batch execution should use prepared statements
-  * instead of inlining raw quoted strings, so that string values containing
-  * single-quotes are handled safely.
+/** Regression tests for issue #33: batch execution should use prepared statements instead of inlining raw quoted strings, so
+  * that string values containing single-quotes are handled safely.
   */
 class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
@@ -87,7 +86,7 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 1, "name" -> "hello", "flag" -> true, "val" -> 1.5)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result  = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     countRows() shouldBe 1
     fetchName(1) shouldBe "hello"
@@ -96,23 +95,23 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
   it should "safely handle string values containing single-quotes (regression for #33)" in {
     clearTable()
     val dangerous = "O'Brien"
-    val queries = Seq(
+    val queries   = Seq(
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 2, "name" -> dangerous, "flag" -> false, "val" -> 0.0)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result    = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     fetchName(2) shouldBe dangerous
   }
 
   it should "safely handle string values containing double single-quotes" in {
     clearTable()
-    val tricky = "it''s a trap"
+    val tricky  = "it''s a trap"
     val queries = Seq(
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 3, "name" -> tricky, "flag" -> false, "val" -> 0.0)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result  = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     fetchName(3) shouldBe tricky
   }
@@ -123,7 +122,7 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 4, "name" -> "NULL", "flag" -> false, "val" -> 0.0)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result  = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     fetchName(4) shouldBe null
   }
@@ -138,7 +137,7 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 12, "name" -> "third", "flag" -> true, "val" -> 3.0)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result  = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     countRows() shouldBe 3
     fetchName(11) shouldBe "O'Reilly"
@@ -152,7 +151,7 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 21, "name" -> "b", "flag" -> false, "val" -> 2.0)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result  = await[Array[Int]](client.batch(queries))
     result.map(_.toList) shouldBe Right(List(1, 1))
   }
 
@@ -162,7 +161,7 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 30, "name" -> "booltest", "flag" -> true, "val" -> 3.14)),
     )
-    val result = await[Array[Int]](client.batch(queries))
+    val result  = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     countRows() shouldBe 1
   }
