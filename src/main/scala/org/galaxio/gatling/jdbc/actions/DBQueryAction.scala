@@ -61,7 +61,7 @@ case class DBQueryAction(
         },
         exception =>
           executeNext(
-            session,
+            session.markAsFailed,
             startTime,
             ctx.coreComponents.clock.nowMillis,
             KO,
@@ -75,7 +75,7 @@ case class DBQueryAction(
         requestName(session).map { rn =>
           ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
           executeNext(
-            session,
+            session.markAsFailed,
             ctx.coreComponents.clock.nowMillis,
             ctx.coreComponents.clock.nowMillis,
             KO,

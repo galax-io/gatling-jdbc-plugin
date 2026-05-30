@@ -25,7 +25,7 @@ case class DBRawQueryAction(requestName: Expression[String], query: Expression[S
         _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, resolvedName, None, None),
         exception =>
           executeNext(
-            session,
+            session.markAsFailed,
             startTime,
             ctx.coreComponents.clock.nowMillis,
             KO,
@@ -39,7 +39,7 @@ case class DBRawQueryAction(requestName: Expression[String], query: Expression[S
         requestName(session).map { rn =>
           ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
           executeNext(
-            session,
+            session.markAsFailed,
             ctx.coreComponents.clock.nowMillis,
             ctx.coreComponents.clock.nowMillis,
             KO,
