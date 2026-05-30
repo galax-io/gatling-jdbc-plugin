@@ -30,6 +30,7 @@ package object db {
         case (k, v: LocalDateTime) => (k, DateParam(v))
         case (k, v: Boolean)       => (k, BooleanParam(v))
         case (k, v: UUID)          => (k, UUIDParam(v))
+        case (k, null)             => (k, NullParam)
         case (k, v)                => (k, StrParam(v.toString))
       }.toSeq: _*)
   }
