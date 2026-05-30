@@ -49,19 +49,13 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
   private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
     ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)
 
-  private def statementForBatchResource: ResourceFut[StatementWrapper[Future]] =
+  private def connectionForBatchResource: ResourceFut[ConnectionWrapper[Future]] =
     for {
       conn       <- connectionResource
       autoCommit <- ResourceFut.liftFuture(conn.getAutoCommit)
       _          <- ResourceFut.liftFuture(conn.setAutoCommit(false))
-      stmt       <- ResourceFut.make(conn.createStatement.map(s => statement(s, ec, queryTimeoutSeconds)))(s =>
-                      for {
-                        _ <- conn.commit
-                        _ <- conn.setAutoCommit(autoCommit)
-                        _ <- s.close
-                      } yield (),
-                    )
-    } yield stmt
+      _          <- ResourceFut.make(Future.successful(()))(_ => conn.setAutoCommit(autoCommit))
+    } yield conn
 
   private def statementResource: ResourceFut[StatementWrapper[Future]] =
     for {
@@ -122,11 +116,31 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
 
   def batch[U](queries: Seq[SqlWithParam])(s: Array[Int] => U, f: Throwable => U): Unit =
     withCompletion(
-      statementForBatchResource.use(stmt =>
+      connectionForBatchResource.use { conn =>
         queries
-          .foldLeft(Future.successful(())) { (acc, query) => acc.flatMap(_ => stmt.addBatch(query.substituteParams)) }
-          .flatMap(_ => stmt.executeBatch),
-      ),
+          .groupBy(_.sql)
+          .toSeq
+          .foldLeft(Future.successful(Vector.empty[Int])) { case (accFut, (sql, group)) =>
+            accFut.flatMap { acc =>
+              val interpolated = Interpolator.interpolate(sql)
+              conn.prepareStatement(interpolated.queryString).flatMap { rawPs =>
+                val ps = preparedStatement(rawPs, ec)
+                group
+                  .foldLeft(Future.successful(())) { (prev, query) =>
+                    prev.flatMap(_ => ps.setParams(interpolated, query.params.toMap).flatMap(_ => ps.addBatch))
+                  }
+                  .flatMap(_ => ps.executeBatch)
+                  .transformWith(result => ps.close.flatMap(_ => Future.fromTry(result)))
+                  .map(counts => acc ++ counts)
+              }
+            }
+          }
+          .map(_.toArray)
+          .transformWith {
+            case Success(result)    => conn.commit.map(_ => result)
+            case Failure(exception) => conn.rollback.flatMap(_ => Future.failed(exception))
+          }
+      },
     )(s, f)
 
   def close(): Unit = {
