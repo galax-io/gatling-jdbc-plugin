@@ -7,6 +7,8 @@ import org.galaxio.gatling.javaapi.internal.Utils
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
+import org.galaxio.gatling.jdbc.db.{NullParam, SQL}
+
 import java.lang.reflect.{InvocationHandler, Proxy}
 import java.util.{Map => JMap, HashMap => JHashMap, UUID}
 import java.util.concurrent.TimeUnit
@@ -72,7 +74,8 @@ class UtilsSpec extends AnyFlatSpec with Matchers {
     result shouldBe a[java.lang.Double]
   }
 
-  it should "preserve null values as null" in {
+  // Expression-layer test: null passes through Utils.getSeq without NPE
+  it should "preserve null values as null (expression layer)" in {
     val m    = new JHashMap[String, Object]()
     m.put("v", null)
     val seq  = Utils.getSeq(m)
@@ -81,6 +84,14 @@ class UtilsSpec extends AnyFlatSpec with Matchers {
       case Success(v)   => v shouldBe null
       case Failure(msg) => fail(s"expression failed for null: $msg")
     }
+  }
+
+  // Full-path test: null resolved from session must map to NullParam in withParamsMap,
+  // not trigger NPE from the catch-all's v.toString call.
+  it should "produce NullParam in withParamsMap when a resolved value is null" in {
+    val sqlResult = SQL("SELECT 1").withParamsMap(Map[String, Any]("col" -> null))
+    sqlResult.params should have size 1
+    sqlResult.params.head shouldBe ("col" -> NullParam)
   }
 
   it should "still resolve Gatling EL String expressions (#{...} syntax)" in {
