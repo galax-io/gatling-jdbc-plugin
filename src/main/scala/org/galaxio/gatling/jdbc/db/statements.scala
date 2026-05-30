@@ -18,6 +18,8 @@ object statements {
     def executeQuery: F[ResultSet]
     def close: F[Unit]
     def executeUpdate: F[Int]
+    def addBatch: F[Unit]
+    def executeBatch: F[Array[Int]]
     def setInt(index: Int, value: Int): F[Unit]
     def setDouble(index: Int, value: Double): F[Unit]
     def setString(index: Int, value: String): F[Unit]
@@ -64,6 +66,10 @@ object statements {
     override def close: Future[Unit] = Future(stmt.close())
 
     override def executeUpdate: Future[Int] = Future(stmt.executeUpdate())
+
+    override def addBatch: Future[Unit] = Future(stmt.addBatch())
+
+    override def executeBatch: Future[Array[Int]] = Future(stmt.executeBatch())
 
     override def setDouble(index: Int, value: Double): Future[Unit] = Future(stmt.setDouble(index, value))
 

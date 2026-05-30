@@ -121,23 +121,27 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
 
   def batch[U](queries: Seq[SqlWithParam])(s: Array[Int] => U, f: Throwable => U): Unit =
     withCompletion(
-      connectionForBatchResource.use(conn =>
-        queries.map { query =>
-          val interpolated = Interpolator.interpolate(query.sql)
-          conn
-            .prepareStatement(interpolated.queryString)
-            .flatMap { ps =>
-              val pstmt = preparedStatement(ps, ec)
-              pstmt
-                .setParams(interpolated, query.params.toMap)
-                .flatMap(_ => pstmt.executeUpdate)
-                .transformWith(result => pstmt.close.flatMap(_ => Future.fromTry(result)))
+      connectionForBatchResource.use { conn =>
+        queries
+          .groupBy(_.sql)
+          .toSeq
+          .foldLeft(Future.successful(Vector.empty[Int])) { case (accFut, (sql, group)) =>
+            accFut.flatMap { acc =>
+              val interpolated = Interpolator.interpolate(sql)
+              conn.prepareStatement(interpolated.queryString).flatMap { rawPs =>
+                val ps = preparedStatement(rawPs, ec)
+                group
+                  .foldLeft(Future.successful(())) { (prev, query) =>
+                    prev.flatMap(_ => ps.setParams(interpolated, query.params.toMap).flatMap(_ => ps.addBatch))
+                  }
+                  .flatMap(_ => ps.executeBatch)
+                  .transformWith(result => ps.close.flatMap(_ => Future.fromTry(result)))
+                  .map(counts => acc ++ counts)
+              }
             }
-        }
-          .foldLeft(Future.successful(Array.empty[Int])) { (acc, fut) =>
-            acc.flatMap(arr => fut.map(count => arr :+ count))
-          },
-      ),
+          }
+          .map(_.toArray)
+      },
     )(s, f)
 
   def close(): Unit = {

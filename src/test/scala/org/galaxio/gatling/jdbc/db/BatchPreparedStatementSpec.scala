@@ -116,7 +116,11 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
     fetchName(3) shouldBe tricky
   }
 
-  it should "handle NULL values" in {
+  // withParamsMap treats the string literal "NULL" as a sentinel that maps to NullParam (SQL NULL).
+  // This is a convention of the withParamsMap API: it is impossible to insert the literal four-character
+  // string "NULL" via withParamsMap; use withParams(... -> NullParam) for explicit NULL, or
+  // withParams(... -> StrParam("NULL")) if you genuinely need the string.
+  it should "treat string literal 'NULL' as SQL NULL per withParamsMap convention" in {
     clearTable()
     val queries = Seq(
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
@@ -125,6 +129,41 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
     val result  = await[Array[Int]](client.batch(queries))
     result shouldBe a[Right[_, _]]
     fetchName(4) shouldBe null
+  }
+
+  it should "return Array.empty without error for an empty batch" in {
+    val result = await[Array[Int]](client.batch(Seq.empty))
+    result.map(_.toList) shouldBe Right(List.empty[Int])
+  }
+
+  it should "handle UUID parameter type" in {
+    clearTable()
+    val conn = dataSource.getConnection
+    try {
+      conn
+        .createStatement()
+        .execute(
+          """CREATE TABLE IF NOT EXISTS batch_uuid_items (
+          |  id   UUID PRIMARY KEY,
+          |  name VARCHAR(255)
+          |)""".stripMargin,
+        )
+    } finally conn.close()
+
+    val id      = UUID.randomUUID()
+    val queries = Seq(
+      SQL("INSERT INTO batch_uuid_items (id, name) VALUES ({id},{name})")
+        .withParamsMap(Map("id" -> id, "name" -> "uuid-test")),
+    )
+    val result  = await[Array[Int]](client.batch(queries))
+    result shouldBe a[Right[_, _]]
+
+    val conn2 = dataSource.getConnection
+    try {
+      val rs = conn2.createStatement().executeQuery(s"SELECT name FROM batch_uuid_items WHERE id = '$id'")
+      rs.next() shouldBe true
+      rs.getString(1) shouldBe "uuid-test"
+    } finally conn2.close()
   }
 
   it should "handle multiple queries in a single batch" in {
