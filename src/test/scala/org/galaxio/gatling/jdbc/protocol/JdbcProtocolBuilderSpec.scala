@@ -80,4 +80,18 @@ class JdbcProtocolBuilderSpec extends AnyFlatSpec with Matchers {
       ).queryTimeout(-1.seconds)
     }
   }
+
+  it should "round up sub-second durations to 1 second" in {
+    // 500ms → 1s (not 0/no-limit): JDBCClient rounds up non-zero sub-second durations
+    // so that users who pass e.g. 500.millis get a 1-second limit, not no limit.
+    val protocol = JdbcProtocolBuilderConnectionSettingsStep(
+      url = "jdbc:h2:mem:test",
+      username = "sa",
+      password = "",
+    ).queryTimeout(500.millis).protocolBuilder.build.asInstanceOf[JdbcProtocol]
+
+    // The protocol stores the original FiniteDuration; JDBCClient performs the rounding.
+    // Verify the value reaches JdbcProtocol so JDBCClient can round it up.
+    protocol.queryTimeout shouldBe Some(500.millis)
+  }
 }

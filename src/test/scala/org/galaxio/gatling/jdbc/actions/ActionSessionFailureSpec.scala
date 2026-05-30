@@ -11,7 +11,7 @@ import io.gatling.core.pause.Disabled
 import io.gatling.core.protocol.{Protocol, ProtocolComponents, ProtocolComponentsRegistry, ProtocolKey}
 import io.gatling.core.session.Session
 import io.gatling.core.structure.ScenarioContext
-import io.netty.channel.{DefaultEventLoop, nio}
+import io.netty.channel.{DefaultEventLoop, EventLoopGroup, nio}
 import org.galaxio.gatling.jdbc.db.JDBCClient
 import org.galaxio.gatling.jdbc.protocol.{JdbcComponents, JdbcProtocol}
 import org.scalatest.BeforeAndAfterAll
@@ -54,8 +54,11 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
 
   // ─── test context builder ────────────────────────────────────────────────────
 
-  private case class TestContext(client: JDBCClient, ctx: ScenarioContext) {
-    def close(): Unit = client.close()
+  private case class TestContext(client: JDBCClient, ctx: ScenarioContext, eventLoopGroup: EventLoopGroup) {
+    def close(): Unit = {
+      client.close()
+      eventLoopGroup.shutdownGracefully(0, 100, java.util.concurrent.TimeUnit.MILLISECONDS).sync()
+    }
   }
 
   private def buildTestContext(): TestContext = {
@@ -91,7 +94,7 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
       protocols,
     )
 
-    TestContext(client, scenarioCtx)
+    TestContext(client, scenarioCtx, elg)
   }
 
   // ─── stub next Action that captures the forwarded session ────────────────────

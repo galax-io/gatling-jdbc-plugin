@@ -56,7 +56,13 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     this.copy(blockingPoolSize = Some(newValue))
   def connectionTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep =
     this.copy(connectionTimeout = newValue)
-  def queryTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep      = {
+
+  /** Sets the query timeout for all JDBC statements.
+    * @param newValue
+    *   timeout duration. Sub-second values are rounded up to 1 second. Use [[scala.None]] (omit this setting) for no timeout.
+    *   Passing [[scala.concurrent.duration.Duration.Zero]] is equivalent to no timeout (JDBC semantics).
+    */
+  def queryTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep = {
     require(newValue >= Duration.Zero, "queryTimeout must be non-negative")
     this.copy(queryTimeout = Some(newValue))
   }
