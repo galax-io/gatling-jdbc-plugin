@@ -60,7 +60,11 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     this.copy(queryTimeout = Some(newValue))
 }
 
-final case class JdbcProtocolBuilder(hikariConfig: HikariConfig, blockingPoolSize: Int, queryTimeout: Option[FiniteDuration] = None) {
+final case class JdbcProtocolBuilder(
+    hikariConfig: HikariConfig,
+    blockingPoolSize: Int,
+    queryTimeout: Option[FiniteDuration] = None,
+) {
 
   def build: Protocol = JdbcProtocol(hikariConfig, blockingPoolSize, queryTimeout)
 

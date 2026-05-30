@@ -55,8 +55,9 @@ object statements {
     override def executeBatch: Future[Array[Int]] = Future(stmt.executeBatch())
   }
 
-  private final class PreparedStatementWrapperImpl(stmt: PreparedStatement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
-      extends PreparedStatementWrapper[Future] {
+  private final class PreparedStatementWrapperImpl(stmt: PreparedStatement, queryTimeoutSeconds: Option[Int])(implicit
+      ec: ExecutionContext,
+  ) extends PreparedStatementWrapper[Future] {
     queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
     override def executeQuery: Future[ResultSet] = Future(stmt.executeQuery())
 
@@ -97,8 +98,9 @@ object statements {
     }
   }
 
-  private final class CallableStatementWrapperImpl(stmt: CallableStatement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
-      extends CallableStatementWrapper[Future] {
+  private final class CallableStatementWrapperImpl(stmt: CallableStatement, queryTimeoutSeconds: Option[Int])(implicit
+      ec: ExecutionContext,
+  ) extends CallableStatementWrapper[Future] {
     queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
     override def close: Future[Unit] = Future(stmt.close())
 
