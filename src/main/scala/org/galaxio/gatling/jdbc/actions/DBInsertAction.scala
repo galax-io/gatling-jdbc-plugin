@@ -36,7 +36,16 @@ case class DBInsertAction(
       .executeUpdate(sql.sql, sql.params)(
         _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None),
         e =>
-          executeNext(session.markAsFailed, startTime, ctx.coreComponents.clock.nowMillis, KO, next, rn, Some("ERROR"), Some(e.getMessage)),
+          executeNext(
+            session.markAsFailed,
+            startTime,
+            ctx.coreComponents.clock.nowMillis,
+            KO,
+            next,
+            rn,
+            Some("ERROR"),
+            Some(e.getMessage),
+          ),
       ))
       .onFailure(m =>
         requestName(session).map { rn =>
