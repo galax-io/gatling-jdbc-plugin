@@ -3,7 +3,7 @@ package org.galaxio.gatling.jdbc.protocol
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt}
 
 class JdbcProtocolBuilderSpec extends AnyFlatSpec with Matchers {
 
@@ -33,5 +33,51 @@ class JdbcProtocolBuilderSpec extends AnyFlatSpec with Matchers {
     val protocol = builder.protocolBuilder.build.asInstanceOf[JdbcProtocol]
 
     protocol.blockingPoolSize shouldBe 5
+  }
+
+  it should "flow queryTimeout through to JdbcProtocol" in {
+    val builder = JdbcProtocolBuilderConnectionSettingsStep(
+      url = "jdbc:h2:mem:test",
+      username = "sa",
+      password = "",
+    ).queryTimeout(30.seconds)
+
+    val protocol = builder.protocolBuilder.build.asInstanceOf[JdbcProtocol]
+
+    protocol.queryTimeout shouldBe Some(30.seconds)
+  }
+
+  it should "preserve None when queryTimeout is not set" in {
+    val builder = JdbcProtocolBuilderConnectionSettingsStep(
+      url = "jdbc:h2:mem:test",
+      username = "sa",
+      password = "",
+    )
+
+    val protocol = builder.protocolBuilder.build.asInstanceOf[JdbcProtocol]
+
+    protocol.queryTimeout shouldBe None
+  }
+
+  it should "allow zero queryTimeout (JDBC semantics: no limit)" in {
+    val builder = JdbcProtocolBuilderConnectionSettingsStep(
+      url = "jdbc:h2:mem:test",
+      username = "sa",
+      password = "",
+    ).queryTimeout(Duration.Zero)
+
+    val protocol = builder.protocolBuilder.build.asInstanceOf[JdbcProtocol]
+
+    protocol.queryTimeout shouldBe Some(Duration.Zero)
+  }
+
+  it should "reject negative queryTimeout" in {
+    an[IllegalArgumentException] should be thrownBy {
+      JdbcProtocolBuilderConnectionSettingsStep(
+        url = "jdbc:h2:mem:test",
+        username = "sa",
+        password = "",
+      ).queryTimeout(-1.seconds)
+    }
   }
 }

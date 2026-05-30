@@ -44,7 +44,7 @@ object JDBCClient {
 class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None) {
   private implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(blockingPool)
 
-  private val queryTimeoutSeconds: Option[Int] = queryTimeout.map(d => math.max(1, d.toSeconds.toInt))
+  private val queryTimeoutSeconds: Option[Int] = queryTimeout.map(d => math.max(0, d.toSeconds.toInt))
 
   private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
     ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)

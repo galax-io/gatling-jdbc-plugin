@@ -56,8 +56,10 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     this.copy(blockingPoolSize = Some(newValue))
   def connectionTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep =
     this.copy(connectionTimeout = newValue)
-  def queryTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep      =
+  def queryTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep      = {
+    require(newValue >= Duration.Zero, "queryTimeout must be non-negative")
     this.copy(queryTimeout = Some(newValue))
+  }
 }
 
 final case class JdbcProtocolBuilder(
