@@ -59,8 +59,8 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
 
   /** Sets the query timeout for all JDBC statements.
     * @param newValue
-    *   timeout duration. Sub-second values are rounded up to 1 second. Use [[scala.None]] (omit this setting) for no timeout.
-    *   Passing [[scala.concurrent.duration.Duration.Zero]] is equivalent to no timeout (JDBC semantics).
+    *   timeout duration. Sub-second values are rounded up to 1 second. Omit this setting for no timeout. Passing
+    *   `Duration.Zero` is equivalent to no timeout (JDBC semantics).
     */
   def queryTimeout(newValue: FiniteDuration): JdbcProtocolBuilderConnectionSettingsStep = {
     require(newValue >= Duration.Zero, "queryTimeout must be non-negative")
