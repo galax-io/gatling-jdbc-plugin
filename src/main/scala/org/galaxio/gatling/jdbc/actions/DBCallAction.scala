@@ -20,11 +20,11 @@ case class DBCallAction(
 
   override def name: String = genName("jdbcCallAction")
 
-  private def makeCallString(procedureName: String, inParams: Map[String, Any], outParams: Map[String, Int]) =
+  private def makeCallString(procedureName: String, inParams: Seq[(String, Any)], outParams: Seq[(String, Int)]) =
     if (outParams.isEmpty) {
-      s"CALL $procedureName (${inParams.keys.map(s => s"{$s}").mkString(",")})"
+      s"CALL $procedureName (${inParams.map(s => s"{${s._1}}").mkString(",")})"
     } else {
-      s"CALL $procedureName (${inParams.keys.map(s => s"{$s}").mkString(",")}, ${outParams.keys.map(s => s"$s =>{$s}").mkString(",")})"
+      s"CALL $procedureName (${inParams.map(s => s"{${s._1}}").mkString(",")}, ${outParams.map(s => s"${s._1} =>{${s._1}}").mkString(",")})"
     }
 
   override def execute(session: Session): Unit =
@@ -32,18 +32,23 @@ case class DBCallAction(
       rn        <- requestName(session)
       pName     <- procedureName(session)
       pParams   <- sessionParams
-                     .foldLeft(Map[String, Any]().success) { case (r, (k, v)) =>
-                       r.flatMap(m => v(session).map(rv => m + (k -> rv)))
+                     .foldLeft(Seq.empty[(String, Any)].success) { case (r, (k, v)) =>
+                       r.flatMap(seq => v(session).map(rv => seq :+ (k -> rv)))
                      }
-      sql       <- SQL(makeCallString(pName, pParams, outParams.toMap))
-                     .withParamsMap(pParams)
+      sql       <- SQL(makeCallString(pName, pParams, outParams))
+                     .withParamsMap(pParams.toMap)
                      .withOutParams(outParams)
                      .success
       startTime <- ctx.coreComponents.clock.nowMillis.success
 
     } yield dbClient
       .call(sql.sql, sql.params, sql.outParams)(
-        _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None),
+        outValues => {
+          // Surface each OUT parameter value into the Gatling session under its parameter name so that
+          // downstream actions and checks can reference them via session attributes (e.g. "#{outParamName}").
+          val updatedSession = outValues.foldLeft(session) { case (s, (name, value)) => s.set(name, value) }
+          executeNext(updatedSession, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None)
+        },
         e =>
           executeNext(
             session.markAsFailed,

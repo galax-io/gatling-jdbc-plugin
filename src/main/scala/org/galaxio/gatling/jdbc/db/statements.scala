@@ -42,6 +42,15 @@ object statements {
     def setTimestamp(index: Int, value: java.sql.Timestamp): F[Unit]
     def registerOutParameter(index: Int, sqlType: Int): F[Unit]
     def setParams(interpolated: InterpolatorCtx, inParams: Map[String, ParamVal], outParams: Map[String, Int]): Future[Unit]
+
+    /** Read all registered OUT parameters after execution.
+      *
+      * @param outParams
+      *   map of parameter name to its 1-based JDBC index (as built by the interpolator)
+      * @return
+      *   a map of parameter name to the value returned by the database
+      */
+    def getOutParams(outParams: Map[String, List[Int]]): F[Map[String, Any]]
   }
 
   private final class StatementWrapperImpl(stmt: Statement, queryTimeoutSeconds: Option[Int])(implicit ec: ExecutionContext)
@@ -139,20 +148,34 @@ object statements {
           case (name, indexes) if outParams.contains(name) =>
             indexes.map(this.registerOutParameter(_, outParams(name)))
           case (name, indexes)                             =>
-            inParams(name) match {
-              case IntParam(v)     => indexes.map(this.setInt(_, v))
-              case DoubleParam(v)  => indexes.map(this.setDouble(_, v))
-              case StrParam(v)     => indexes.map(this.setString(_, v))
-              case LongParam(v)    => indexes.map(this.setLong(_, v))
-              case NullParam       => indexes.map(this.setObject(_, null))
-              case DateParam(v)    => indexes.map(this.setTimestamp(_, Timestamp.valueOf(v)))
-              case UUIDParam(v)    => indexes.map(this.setObject(_, v))
-              case BooleanParam(v) => indexes.map(this.setBoolean(_, v))
+            inParams.get(name) match {
+              case Some(IntParam(v))     => indexes.map(this.setInt(_, v))
+              case Some(DoubleParam(v))  => indexes.map(this.setDouble(_, v))
+              case Some(StrParam(v))     => indexes.map(this.setString(_, v))
+              case Some(LongParam(v))    => indexes.map(this.setLong(_, v))
+              case Some(NullParam)       => indexes.map(this.setObject(_, null))
+              case Some(DateParam(v))    => indexes.map(this.setTimestamp(_, Timestamp.valueOf(v)))
+              case Some(UUIDParam(v))    => indexes.map(this.setObject(_, v))
+              case Some(BooleanParam(v)) => indexes.map(this.setBoolean(_, v))
+              case None                  =>
+                List(
+                  Future.failed(
+                    new IllegalArgumentException(
+                      s"SQL placeholder '$name' has no corresponding parameter binding",
+                    ),
+                  ),
+                )
             }
         }.reduce((f1, f2) => f1.flatMap(_ => f2))
     }
 
     override def setBoolean(index: Int, value: Boolean): Future[Unit] = Future(stmt.setBoolean(index, value))
+
+    override def getOutParams(outParams: Map[String, List[Int]]): Future[Map[String, Any]] =
+      Future(outParams.map { case (name, indexes) =>
+        // Use the first index for each named parameter (names are unique in stored proc signatures)
+        name -> stmt.getObject(indexes.head)
+      })
   }
 
   def statement(statement: Statement, ec: ExecutionContext, queryTimeoutSeconds: Option[Int] = None): StatementWrapper[Future] =
