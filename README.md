@@ -340,8 +340,8 @@ sbt compile
 # Run unit tests
 sbt test
 
-# Run integration tests (requires Docker)
-sbt "Test / testOnly -- -n org.galaxio.gatling.jdbc.tags.DockerTest"
+# Run all tests (unit + integration; integration tests start PostgreSQL via Testcontainers)
+sbt test
 
 # Run Gatling example simulation (H2)
 sbt "Gatling / testOnly org.galaxio.performance.jdbc.test.DebugTest"
