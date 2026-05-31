@@ -138,10 +138,19 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
         if (outParams.isEmpty) {
           scala.concurrent.Future.successful(Map.empty[String, Any])
         } else {
-          val interpolated    = Interpolator.interpolate(sqlCall)
+          val interpolated     = Interpolator.interpolate(sqlCall)
           // Collect only OUT-parameter name → index mappings from the interpolated index map
-          val outParamIndexes = interpolated.m.filter { case (name, _) => outParams.exists(_._1 == name) }
-          stmt.getOutParams(outParamIndexes)
+          val outParamIndexes  = interpolated.m.filter { case (name, _) => outParams.exists(_._1 == name) }
+          val missingOutParams = outParams.map(_._1).filterNot(outParamIndexes.contains)
+          if (missingOutParams.nonEmpty) {
+            scala.concurrent.Future.failed(
+              new IllegalArgumentException(
+                s"OUT parameter(s) not found in SQL placeholders: ${missingOutParams.mkString(", ")}",
+              ),
+            )
+          } else {
+            stmt.getOutParams(outParamIndexes)
+          }
         }
       }
     }

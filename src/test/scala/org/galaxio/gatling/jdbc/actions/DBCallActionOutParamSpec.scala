@@ -2,24 +2,18 @@ package org.galaxio.gatling.jdbc.actions
 
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import io.gatling.commons.stats.OK
-import io.gatling.core.GatlingTestSupport
-import io.gatling.core.action.Action
 import io.gatling.core.actor.ActorSystem
 import io.gatling.core.config.GatlingConfiguration
-import io.gatling.core.protocol.{Protocol, ProtocolComponents, ProtocolKey}
 import io.gatling.core.session.Session
-import io.gatling.core.structure.ScenarioContext
-import io.netty.channel.{DefaultEventLoop, EventLoopGroup, nio}
+import io.netty.channel.DefaultEventLoop
 import org.galaxio.gatling.jdbc.db.JDBCClient
-import org.galaxio.gatling.jdbc.protocol.{JdbcComponents, JdbcProtocol}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.sql.Types
-import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
+import java.util.concurrent.Executors
 import scala.collection.immutable.Map
-import scala.collection.mutable
 
 /** Tests for stored procedure OUT parameter support (issue #28).
   *
@@ -28,12 +22,13 @@ import scala.collection.mutable
   *
   * Additionally tests that JDBCClient.call now accepts a Map[String, Any] => U success callback (API-contract check).
   */
-class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll with JdbcActionSpecSupport {
 
   // ─── shared infrastructure ───────────────────────────────────────────────────
 
-  private val eventLoop   = new DefaultEventLoop()
-  private val actorSystem = new ActorSystem()
+  private val eventLoop                    = new DefaultEventLoop()
+  override val actorSystem                 = new ActorSystem()
+  private val config: GatlingConfiguration = GatlingConfiguration.loadForTest()
 
   override protected def afterAll(): Unit = {
     eventLoop.shutdownGracefully()
@@ -67,59 +62,8 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     }
   }
 
-  private val fixedClock = new io.gatling.commons.util.Clock {
-    override def nowMillis: Long = System.currentTimeMillis()
-  }
-
-  private val noOpExit: Action = new Action {
-    override def name: String                    = "noop-exit"
-    override def execute(session: Session): Unit = ()
-  }
-
-  private case class TestContext(client: JDBCClient, ctx: ScenarioContext, eventLoopGroup: EventLoopGroup) {
-    def close(): Unit = {
-      client.close()
-      eventLoopGroup.shutdownGracefully(0, 100, java.util.concurrent.TimeUnit.MILLISECONDS).sync()
-    }
-  }
-
-  private def buildTestContext(outResults: Map[String, Any]): TestContext = {
-    val client = stubClientWith(outResults)
-
-    val jdbcComponents = JdbcComponents(client)
-    val fakeProtocol   = new JdbcProtocol(new HikariConfig(), 1)
-
-    val factoryCache: mutable.Map[ProtocolKey[_, _], Protocol => ProtocolComponents] =
-      mutable.Map(JdbcProtocol.jdbcProtocolKey -> ((_: Protocol) => jdbcComponents))
-
-    val protocols: Map[Class[_ <: Protocol], Protocol] =
-      Map(classOf[JdbcProtocol] -> fakeProtocol)
-
-    val elg    = new nio.NioEventLoopGroup(1)
-    val config = GatlingConfiguration.loadForTest()
-
-    val scenarioCtx = GatlingTestSupport.makeScenarioContext(
-      actorSystem,
-      elg,
-      fixedClock,
-      noOpExit,
-      config,
-      factoryCache,
-      protocols,
-    )
-
-    TestContext(client, scenarioCtx, elg)
-  }
-
-  private class CaptureAction extends Action {
-    @volatile var capturedSession: Session = _
-    private val latch                      = new CountDownLatch(1)
-
-    override def name: String                    = "capture"
-    override def execute(session: Session): Unit = { capturedSession = session; latch.countDown() }
-
-    def awaitCapture(timeoutSeconds: Int = 5): Boolean = latch.await(timeoutSeconds.toLong, TimeUnit.SECONDS)
-  }
+  private def buildTestContext(outResults: Map[String, Any]): TestContext =
+    buildTestContextWithClient(stubClientWith(outResults), config)
 
   // ─── tests ───────────────────────────────────────────────────────────────────
 

@@ -148,15 +148,23 @@ object statements {
           case (name, indexes) if outParams.contains(name) =>
             indexes.map(this.registerOutParameter(_, outParams(name)))
           case (name, indexes)                             =>
-            inParams(name) match {
-              case IntParam(v)     => indexes.map(this.setInt(_, v))
-              case DoubleParam(v)  => indexes.map(this.setDouble(_, v))
-              case StrParam(v)     => indexes.map(this.setString(_, v))
-              case LongParam(v)    => indexes.map(this.setLong(_, v))
-              case NullParam       => indexes.map(this.setObject(_, null))
-              case DateParam(v)    => indexes.map(this.setTimestamp(_, Timestamp.valueOf(v)))
-              case UUIDParam(v)    => indexes.map(this.setObject(_, v))
-              case BooleanParam(v) => indexes.map(this.setBoolean(_, v))
+            inParams.get(name) match {
+              case Some(IntParam(v))     => indexes.map(this.setInt(_, v))
+              case Some(DoubleParam(v))  => indexes.map(this.setDouble(_, v))
+              case Some(StrParam(v))     => indexes.map(this.setString(_, v))
+              case Some(LongParam(v))    => indexes.map(this.setLong(_, v))
+              case Some(NullParam)       => indexes.map(this.setObject(_, null))
+              case Some(DateParam(v))    => indexes.map(this.setTimestamp(_, Timestamp.valueOf(v)))
+              case Some(UUIDParam(v))    => indexes.map(this.setObject(_, v))
+              case Some(BooleanParam(v)) => indexes.map(this.setBoolean(_, v))
+              case None                  =>
+                List(
+                  Future.failed(
+                    new IllegalArgumentException(
+                      s"SQL placeholder '$name' has no corresponding parameter binding",
+                    ),
+                  ),
+                )
             }
         }.reduce((f1, f2) => f1.flatMap(_ => f2))
     }

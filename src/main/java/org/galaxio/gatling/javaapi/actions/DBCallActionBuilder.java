@@ -1,7 +1,7 @@
 package org.galaxio.gatling.javaapi.actions;
 
 import io.gatling.javaapi.core.ActionBuilder;
-import scala.collection.JavaConverters;
+import scala.jdk.javaapi.CollectionConverters;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,14 +35,13 @@ public class DBCallActionBuilder implements ActionBuilder {
      * @param params map of parameter name to {@link java.sql.Types} constant
      * @return a new builder with OUT parameters configured
      */
-    @SuppressWarnings("deprecation")
     public DBCallActionBuilder outParams(Map<String, Integer> params) {
         List<scala.Tuple2<String, Object>> list = new ArrayList<>(params.size());
         for (Map.Entry<String, Integer> e : params.entrySet()) {
             list.add(scala.Tuple2.apply(e.getKey(), (Object) e.getValue()));
         }
         scala.collection.immutable.Seq<scala.Tuple2<String, Object>> scalaSeq =
-                JavaConverters.asScalaIteratorConverter(list.iterator()).asScala().toSeq();
+                CollectionConverters.asScala(list).toSeq();
 
         return new DBCallActionBuilder(wrapped.outParams(scalaSeq));
     }
