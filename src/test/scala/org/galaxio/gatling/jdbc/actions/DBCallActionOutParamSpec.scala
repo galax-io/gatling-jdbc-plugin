@@ -43,11 +43,11 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
 
   // ─── Stub JDBCClient that bypasses JDBC entirely ─────────────────────────────
 
-  /** A JDBCClient that, when `call` is invoked, immediately fires the success callback with a
-    * pre-configured map of OUT parameter values.
+  /** A JDBCClient that, when `call` is invoked, immediately fires the success callback with a pre-configured map of OUT
+    * parameter values.
     */
   private def stubClientWith(outResults: Map[String, Any]): JDBCClient = {
-    val cfg = new HikariConfig()
+    val cfg          = new HikariConfig()
     cfg.setJdbcUrl("jdbc:h2:mem:out_param_stub;DB_CLOSE_DELAY=-1")
     cfg.setUsername("sa")
     cfg.setPassword("")
@@ -56,7 +56,11 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val blockingPool = Executors.newFixedThreadPool(1)
 
     new JDBCClient(ds, blockingPool) {
-      override def call[U](sqlCall: String, params: Seq[(String, org.galaxio.gatling.jdbc.db.ParamVal)], outParams: Seq[(String, Int)])(
+      override def call[U](
+          sqlCall: String,
+          params: Seq[(String, org.galaxio.gatling.jdbc.db.ParamVal)],
+          outParams: Seq[(String, Int)],
+      )(
           s: Map[String, Any] => U,
           f: Throwable => U,
       ): Unit = s(outResults)

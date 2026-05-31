@@ -114,9 +114,9 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
 
   /** Execute a stored-procedure call and return the OUT parameter values surfaced by the database.
     *
-    * If no OUT parameters are declared the success callback receives an empty map. The update-count returned by
-    * `executeUpdate` is intentionally not surfaced because stored procedures do not reliably report it across drivers;
-    * callers that need row counts should use [[executeUpdate]] instead.
+    * If no OUT parameters are declared the success callback receives an empty map. The update-count returned by `executeUpdate`
+    * is intentionally not surfaced because stored procedures do not reliably report it across drivers; callers that need row
+    * counts should use [[executeUpdate]] instead.
     *
     * @param sqlCall
     *   the CALL statement string (with named placeholders, e.g. `CALL my_proc({in1}, {out1})`)
@@ -138,7 +138,7 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
         if (outParams.isEmpty) {
           scala.concurrent.Future.successful(Map.empty[String, Any])
         } else {
-          val interpolated = Interpolator.interpolate(sqlCall)
+          val interpolated    = Interpolator.interpolate(sqlCall)
           // Collect only OUT-parameter name → index mappings from the interpolated index map
           val outParamIndexes = interpolated.m.filter { case (name, _) => outParams.exists(_._1 == name) }
           stmt.getOutParams(outParamIndexes)
