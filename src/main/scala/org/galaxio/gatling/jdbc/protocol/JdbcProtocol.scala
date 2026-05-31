@@ -41,7 +41,7 @@ object JdbcProtocol {
 
 }
 
-case class JdbcProtocol(hikariConfig: HikariConfig, blockingPoolSize: Int, queryTimeout: Option[FiniteDuration] = None)
+case class JdbcProtocol(hikariConfig: HikariConfig, private[protocol] val blockingPoolSize: Int, queryTimeout: Option[FiniteDuration] = None)
     extends Protocol {
   type Components = JdbcComponents
 }
