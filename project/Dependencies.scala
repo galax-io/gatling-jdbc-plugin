@@ -18,4 +18,8 @@ object Dependencies {
   lazy val h2jdbc    = "com.h2database" % "h2"        % "2.4.240" % Test
   lazy val scalatest = "org.scalatest" %% "scalatest" % "3.2.19"  % Test
 
+  private val testcontainersVersion = "1.20.4"
+  lazy val testcontainersPg         = "org.testcontainers" % "postgresql" % testcontainersVersion % Test
+  lazy val postgresJdbc             = "org.postgresql"     % "postgresql" % "42.7.4"              % Test
+
 }
