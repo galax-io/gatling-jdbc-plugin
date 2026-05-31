@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.{KO, OK}
+import io.gatling.commons.stats.OK
 import io.gatling.commons.validation._
 import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
@@ -39,7 +39,7 @@ case class DBCallAction(
                      .withParamsMap(pParams.toMap)
                      .withOutParams(outParams)
                      .success
-      startTime <- ctx.coreComponents.clock.nowMillis.success
+      startTime <- now.success
 
     } yield dbClient
       .call(sql.sql, sql.params, sql.outParams)(
@@ -47,35 +47,11 @@ case class DBCallAction(
           // Surface each OUT parameter value into the Gatling session under its parameter name so that
           // downstream actions and checks can reference them via session attributes (e.g. "#{outParamName}").
           val updatedSession = outValues.foldLeft(session) { case (s, (name, value)) => s.set(name, value) }
-          executeNext(updatedSession, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None)
+          executeNext(updatedSession, startTime, now, OK, next, rn, None, None)
         },
-        e =>
-          executeNext(
-            session.markAsFailed,
-            startTime,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(e.getMessage),
-          ),
+        e => reportError(session, startTime, rn, e),
       ))
-      .onFailure(m =>
-        requestName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
-          executeNext(
-            session.markAsFailed,
-            ctx.coreComponents.clock.nowMillis,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(m),
-          )
-        },
-      )
+      .onFailure(crashOnFailure(session, requestName))
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }

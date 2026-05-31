@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.{KO, OK}
+import io.gatling.commons.stats.OK
 import io.gatling.commons.validation._
 import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
@@ -23,45 +23,18 @@ case class DBInsertAction(
     (for {
       rn        <- requestName(session)
       tName     <- tableName(session)
-      iParams   <- sessionValues
-                     .foldLeft(Map[String, Any]().success) { case (r, (k, v)) =>
-                       r.flatMap(m => v(session).map(rv => m + (k -> rv)))
-                     }
+      iParams   <- resolveParams(session, sessionValues)
       sql       <- SQL(s"INSERT INTO $tName (${columns.mkString(",")}) VALUES(${columns.map(s => s"{$s}").mkString(",")})")
                      .withParamsMap(iParams)
                      .success
-      startTime <- ctx.coreComponents.clock.nowMillis.success
+      startTime <- now.success
 
     } yield dbClient
       .executeUpdate(sql.sql, sql.params)(
-        _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, rn, None, None),
-        e =>
-          executeNext(
-            session.markAsFailed,
-            startTime,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(e.getMessage),
-          ),
+        _ => executeNext(session, startTime, now, OK, next, rn, None, None),
+        e => reportError(session, startTime, rn, e),
       ))
-      .onFailure(m =>
-        requestName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
-          executeNext(
-            session.markAsFailed,
-            ctx.coreComponents.clock.nowMillis,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(m),
-          )
-        },
-      )
+      .onFailure(crashOnFailure(session, requestName))
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }

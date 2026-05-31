@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.{KO, OK}
+import io.gatling.commons.stats.OK
 import io.gatling.commons.validation._
 import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
@@ -23,9 +23,6 @@ final case class DBBatchAction(
   }
 
   override def name: String = genName("jdbcBatchAction")
-
-  private def resolveParams(session: Session, values: Seq[(String, Expression[Any])]): Validation[Map[String, Any]] =
-    values.traverse { case (k, v) => v(session).map((k, _)) }.map(_.toMap)
 
   private def resolveBatchAction(session: Session): PartialFunction[BatchAction, Validation[SqlWithParam]] = {
 
@@ -63,37 +60,13 @@ final case class DBBatchAction(
     (for {
       resolvedBatchName    <- batchName(session)
       sqlQueriesWithParams <- actions.traverse(resolveBatchAction(session))
-      startTime            <- ctx.coreComponents.clock.nowMillis.success
+      startTime            <- now.success
     } yield dbClient
       .batch(sqlQueriesWithParams)(
-        _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, resolvedBatchName, None, None),
-        e =>
-          executeNext(
-            session.markAsFailed,
-            startTime,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            resolvedBatchName,
-            Some("ERROR"),
-            Some(e.getMessage),
-          ),
+        _ => executeNext(session, startTime, now, OK, next, resolvedBatchName, None, None),
+        e => reportError(session, startTime, resolvedBatchName, e),
       ))
-      .onFailure(m =>
-        batchName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
-          executeNext(
-            session.markAsFailed,
-            ctx.coreComponents.clock.nowMillis,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(m),
-          )
-        },
-      )
+      .onFailure(crashOnFailure(session, batchName))
   }
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine

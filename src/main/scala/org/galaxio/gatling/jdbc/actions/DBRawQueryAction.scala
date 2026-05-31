@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.{KO, OK}
+import io.gatling.commons.stats.OK
 import io.gatling.commons.validation._
 import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
@@ -18,38 +18,14 @@ case class DBRawQueryAction(requestName: Expression[String], query: Expression[S
       resolvedName  <- requestName(session)
       resolvedQuery <- query(session)
       sql           <- SQL(resolvedQuery).success
-      startTime     <- ctx.coreComponents.clock.nowMillis.success
+      startTime     <- now.success
 
     } yield dbClient
       .executeRaw(sql.q)(
-        _ => executeNext(session, startTime, ctx.coreComponents.clock.nowMillis, OK, next, resolvedName, None, None),
-        exception =>
-          executeNext(
-            session.markAsFailed,
-            startTime,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            resolvedName,
-            Some("ERROR"),
-            Some(exception.getMessage),
-          ),
+        _ => executeNext(session, startTime, now, OK, next, resolvedName, None, None),
+        exception => reportError(session, startTime, resolvedName, exception),
       ))
-      .onFailure(m =>
-        requestName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
-          executeNext(
-            session.markAsFailed,
-            ctx.coreComponents.clock.nowMillis,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(m),
-          )
-        },
-      )
+      .onFailure(crashOnFailure(session, requestName))
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }
