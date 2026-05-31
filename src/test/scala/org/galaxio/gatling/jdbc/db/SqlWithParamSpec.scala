@@ -8,9 +8,8 @@ import java.util.UUID
 
 /** Unit-level regression tests for SQL interpolation and parameter mapping.
   *
-  * Covers `SQL.withParamsMap` type-coercion logic and `SqlWithParam.substituteParams`
-  * string-rendering for every `ParamVal` variant.  These tests require no database — all
-  * assertions are over pure in-memory data structures.
+  * Covers `SQL.withParamsMap` type-coercion logic and `SqlWithParam.substituteParams` string-rendering for every `ParamVal`
+  * variant. These tests require no database — all assertions are over pure in-memory data structures.
   *
   * Protects against regressions in:
   *   - type-dispatch in `withParamsMap` (wrong ParamVal produced for a Scala type)
@@ -114,7 +113,7 @@ class SqlWithParamSpec extends AnyFlatSpec with Matchers {
   it should "render BooleanParam as a bare boolean literal" in {
     val resultTrue  = SQL("{f}").withParamsMap(Map("f" -> true)).substituteParams.trim
     val resultFalse = SQL("{f}").withParamsMap(Map("f" -> false)).substituteParams.trim
-    resultTrue  shouldBe "true"
+    resultTrue shouldBe "true"
     resultFalse shouldBe "false"
   }
 
@@ -168,6 +167,6 @@ class SqlWithParamSpec extends AnyFlatSpec with Matchers {
     val base = SQL("CALL proc({p})").withParams("p" -> IntParam(1))
     val swp  = base.withOutParams(Seq("result" -> java.sql.Types.INTEGER))
     swp.outParams should contain("result" -> java.sql.Types.INTEGER)
-    swp.params    should contain("p"      -> IntParam(1))
+    swp.params should contain("p" -> IntParam(1))
   }
 }

@@ -40,14 +40,16 @@ class ResourceFutSpec extends AnyFlatSpec with Matchers {
 
   it should "call release exactly once after a successful use" in {
     val releaseCount = new AtomicInteger(0)
-    val resource     = ResourceFut.make(Future.successful("res"))(_ => Future.successful(releaseCount.incrementAndGet()).map(_ => ()))
+    val resource     =
+      ResourceFut.make(Future.successful("res"))(_ => Future.successful(releaseCount.incrementAndGet()).map(_ => ()))
     await(resource.use(_ => Future.successful(42)))
     releaseCount.get() shouldBe 1
   }
 
   it should "call release exactly once when the use-function fails" in {
     val releaseCount = new AtomicInteger(0)
-    val resource     = ResourceFut.make(Future.successful("res"))(_ => Future.successful(releaseCount.incrementAndGet()).map(_ => ()))
+    val resource     =
+      ResourceFut.make(Future.successful("res"))(_ => Future.successful(releaseCount.incrementAndGet()).map(_ => ()))
     awaitFailed(resource.use(_ => Future.failed(new RuntimeException("op failed"))))
     releaseCount.get() shouldBe 1
   }
@@ -167,17 +169,17 @@ class ResourceFutSpec extends AnyFlatSpec with Matchers {
 
   "ResourceFut.flatMap" should "chain two resources and make the inner value available to use" in {
     import ResourceFut.ResourceFutOps
-    val outer = ResourceFut.pure("hello")
-    val inner = outer.flatMap(s => ResourceFut.pure(s.length))
+    val outer  = ResourceFut.pure("hello")
+    val inner  = outer.flatMap(s => ResourceFut.pure(s.length))
     val result = await(inner.use(n => Future.successful(n)))
     result shouldBe 5
   }
 
   it should "propagate a failure from the inner resource factory" in {
     import ResourceFut.ResourceFutOps
-    val ex    = new RuntimeException("inner resource failed")
-    val outer = ResourceFut.pure("hello")
-    val inner = outer.flatMap(_ => ResourceFut.liftFuture(Future.failed[Int](ex)))
+    val ex     = new RuntimeException("inner resource failed")
+    val outer  = ResourceFut.pure("hello")
+    val inner  = outer.flatMap(_ => ResourceFut.liftFuture(Future.failed[Int](ex)))
     val thrown = awaitFailed(inner.use(n => Future.successful(n)))
     thrown shouldBe ex
   }
