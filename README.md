@@ -92,7 +92,7 @@ class JdbcSimulation extends Simulation {
 ### Minimal Scenario — Java
 
 ```java
-import static org.galaxio.gatling.jdbc.javaapi.JdbcDsl.*;
+import static org.galaxio.gatling.javaapi.JdbcDsl.*;
 import static io.gatling.javaapi.core.CoreDsl.*;
 
 public class JdbcSimulation extends Simulation {
@@ -117,7 +117,7 @@ public class JdbcSimulation extends Simulation {
 ### Minimal Scenario — Kotlin
 
 ```kotlin
-import org.galaxio.gatling.jdbc.javaapi.JdbcDsl.*
+import org.galaxio.gatling.javaapi.JdbcDsl.*
 import io.gatling.javaapi.core.CoreDsl.*
 
 class JdbcSimulation : Simulation() {
