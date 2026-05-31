@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
-JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. Execute SQL queries, inserts, updates, batch operations, and stored procedures against any JDBC-compatible database with connection pooling (HikariCP) and result checks.
+JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. Execute SQL queries, inserts, updates, batch operations, raw SQL, and stored procedures against any JDBC-compatible database with connection pooling (HikariCP) and result checks.
 
 ## Table of Contents
 
@@ -17,7 +17,6 @@ JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. 
 - [Protocol Configuration](#protocol-configuration)
 - [Actions](#actions)
 - [Checks](#checks)
-- [Transactions](#transactions)
 - [Session Variables](#session-variables)
 - [Examples](#examples)
 - [Contributing](#contributing)
@@ -64,18 +63,18 @@ This plugin does **not** bundle vendor JDBC drivers. You must add the driver for
 
 ```scala
 // sbt
-libraryDependencies += "org.postgresql" % "postgresql" % "42.7.4" % Test
+libraryDependencies += "org.postgresql" % "postgresql" % "42.7.11" % Test
 ```
 ```kotlin
 // Gradle Kotlin DSL
-gatling("org.postgresql:postgresql:42.7.4")
+gatling("org.postgresql:postgresql:42.7.11")
 ```
 ```xml
 <!-- Maven -->
 <dependency>
   <groupId>org.postgresql</groupId>
   <artifactId>postgresql</artifactId>
-  <version>42.7.4</version>
+  <version>42.7.11</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -127,7 +126,7 @@ class JdbcSimulation extends Simulation {
     .exec(
       jdbc("select users")
         .query("SELECT * FROM users WHERE id = 1")
-        .check(allResults.saveAs("rows"))
+        .check(simpleCheck(_.nonEmpty))
     )
 
   setUp(scn.inject(atOnceUsers(1))).protocols(dbConf)
@@ -152,7 +151,7 @@ public class JdbcSimulation extends Simulation {
       .exec(
           jdbc("select users")
               .query("SELECT * FROM users WHERE id = 1")
-              .check(allResults().saveAs("rows"))
+              .check(simpleCheck(simpleCheckType.NonEmpty))
       );
 
   { setUp(scn.injectOpen(atOnceUsers(1)).protocols(dbConf)); }
@@ -177,7 +176,7 @@ class JdbcSimulation : Simulation() {
       .exec(
           jdbc("select users")
               .query("SELECT * FROM users WHERE id = 1")
-              .check(allResults().saveAs("rows"))
+              .check(simpleCheck(simpleCheckType.NonEmpty))
       )
 
   init { setUp(scn.injectOpen(atOnceUsers(1)).protocols(dbConf)) }
@@ -256,10 +255,12 @@ val dataBase = DB.hikariConfig(hikariConfig)
 ```scala
 jdbc("select users")
   .query("SELECT * FROM users WHERE status = 'active'")
-  .check(allResults.saveAs("rows"))
+  .check(simpleCheck(_.nonEmpty))
 ```
 
 ### Parameterized Query
+
+Uses prepared statements. `{param}` placeholders are replaced with `?` at execution time.
 
 ```scala
 jdbc("find user")
@@ -271,41 +272,111 @@ jdbc("find user")
 
 ```scala
 jdbc("insert user")
-  .insertInto("users", "id", "name", "email")
-  .values(Map("id" -> 1, "name" -> "#{userName}", "email" -> "#{email}"))
+  .insertInto("users", Columns("id", "name", "email"))
+  .values("id" -> 1, "name" -> "#{userName}", "email" -> "#{email}")
 ```
 
-### Transaction
+**Java / Kotlin:**
 
-Execute multiple SQL statements atomically (auto-rollback on failure):
+```java
+jdbc("insert user")
+    .insertInto("users", "id", "name", "email")
+    .values(Map.of("id", 1, "name", "#{userName}", "email", "#{email}"))
+```
+
+### Raw SQL
+
+Execute any SQL statement (DDL, DML, etc.) without result mapping:
 
 ```scala
-jdbc("transfer funds").transaction(
-  "UPDATE accounts SET balance = balance - 100 WHERE id = 1",
-  "UPDATE accounts SET balance = balance + 100 WHERE id = 2",
-  "INSERT INTO audit_log (action) VALUES ('transfer')",
+jdbc("create table")
+  .rawSql("CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY, name VARCHAR(100))")
+```
+
+**Java / Kotlin:**
+
+```java
+jdbc("create table")
+    .rawSql("CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY, name VARCHAR(100))")
+```
+
+### Batch Operations
+
+Execute multiple insert/update operations in a single batch:
+
+**Scala:**
+
+```scala
+jdbc("batch insert").batch(
+  insertInto("users", Columns("id", "name")).values("id" -> 1, "name" -> "Alice"),
+  insertInto("users", Columns("id", "name")).values("id" -> 2, "name" -> "Bob"),
 )
 ```
+
+```scala
+jdbc("batch update").batch(
+  update("users").set("name" -> "Updated").where("id = 1"),
+  update("users").set("name" -> "Updated2").where("id = 2"),
+)
+```
+
+**Java / Kotlin:**
+
+```java
+jdbc("batch insert").batch(
+    insertInto("users", "id", "name").values(Map.of("id", 1, "name", "Alice")),
+    insertInto("users", "id", "name").values(Map.of("id", 2, "name", "Bob"))
+)
+```
+
+### Stored Procedures
+
+Call stored procedures with IN and optional OUT parameters:
+
+**Scala:**
+
+```scala
+jdbc("call procedure")
+  .call("my_procedure")
+  .params("inParam" -> "#{value}")
+```
+
+With OUT parameters (values are stored in the Gatling session):
+
+```scala
+jdbc("call with out")
+  .call("my_procedure")
+  .params("inParam" -> "#{value}")
+  .outParams("outResult" -> java.sql.Types.INTEGER)
+```
+
+**Java / Kotlin:**
+
+```java
+jdbc("call procedure")
+    .call("my_procedure")
+    .params(Map.of("inParam", "#{value}"))
+    .outParams(Map.of("outResult", java.sql.Types.INTEGER))
+```
+
+After execution, OUT parameter values are available in the session via `#{outResult}`.
 
 ## Checks
 
 | Check | Description |
 |-------|-------------|
-| `allResults` / `allResults()` | Full result set |
-| `row(index)` | Single row by zero-based index |
-| `column(name)` | All values from a column |
-| `cell(name, rowIndex)` | Single value at column + row |
-| `simpleCheck(predicate)` | Custom boolean predicate |
+| `allResults` / `allResults()` | Full result set as `List[Map[String, Any]]` |
+| `simpleCheck(predicate)` | Custom boolean predicate over the result set |
+| `simpleCheck(simpleCheckType.NonEmpty)` | Built-in Java/Kotlin check: result is non-empty |
+| `simpleCheck(simpleCheckType.Empty)` | Built-in Java/Kotlin check: result is empty |
 
 ### Scala
 
 ```scala
 jdbc("select users")
-  .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
+  .query("SELECT * FROM users")
   .check(
-    cell("NAME", 0).is("Alice"),
-    row(0).saveAs("firstRow"),
-    column("USER_ID").saveAs("userIds"),
+    simpleCheck(_.nonEmpty),
     allResults.saveAs("rows"),
   )
 ```
@@ -314,11 +385,9 @@ jdbc("select users")
 
 ```java
 jdbc("select users")
-    .query("SELECT ID AS USER_ID, NAME FROM USERS ORDER BY ID")
+    .query("SELECT * FROM users")
     .check(
-        cell("NAME", 0).saveAs("firstName"),
-        row(0).saveAs("firstRow"),
-        column("USER_ID").saveAs("userIds"),
+        simpleCheck(simpleCheckType.NonEmpty),
         allResults().saveAs("rows")
     );
 ```
@@ -349,26 +418,13 @@ jdbc("parameterized query")
 
 ```java
 jdbc("insert user")
-    .insertInto("USERS", "id", "name", "active")
+    .insertInto("users", "id", "name", "active")
     .values(Map.of(
         "id", 1,
         "name", "#{userName}",
         "active", true
     ));
 ```
-
-## Transactions
-
-Execute multiple SQL statements atomically:
-
-```scala
-jdbc("transfer funds").transaction(
-  "UPDATE accounts SET balance = balance - 100 WHERE id = 1",
-  "UPDATE accounts SET balance = balance + 100 WHERE id = 2",
-)
-```
-
-If any statement fails, the entire transaction is rolled back. Gatling EL expressions are supported.
 
 ## Examples
 
