@@ -12,6 +12,7 @@ JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. 
 
 - [Compatibility](#compatibility)
 - [Installation](#installation)
+- [Database Driver Dependencies](#database-driver-dependencies)
 - [Quick Start](#quick-start)
 - [Protocol Configuration](#protocol-configuration)
 - [Actions](#actions)
@@ -54,6 +55,50 @@ gatling("org.galaxio:gatling-jdbc-plugin_2.13:<version>")
   <scope>test</scope>
 </dependency>
 ```
+
+## Database Driver Dependencies
+
+This plugin does **not** bundle vendor JDBC drivers. You must add the driver for your database separately.
+
+### PostgreSQL
+
+```scala
+// sbt
+libraryDependencies += "org.postgresql" % "postgresql" % "42.7.4" % Test
+```
+```kotlin
+// Gradle Kotlin DSL
+gatling("org.postgresql:postgresql:42.7.4")
+```
+```xml
+<!-- Maven -->
+<dependency>
+  <groupId>org.postgresql</groupId>
+  <artifactId>postgresql</artifactId>
+  <version>42.7.4</version>
+  <scope>test</scope>
+</dependency>
+```
+
+### MySQL / MariaDB
+
+```scala
+libraryDependencies += "com.mysql" % "mysql-connector-j" % "9.3.0" % Test
+```
+
+### Microsoft SQL Server
+
+```scala
+libraryDependencies += "com.microsoft.sqlserver" % "mssql-jdbc" % "12.10.0.jre11" % Test
+```
+
+### Oracle
+
+```scala
+libraryDependencies += "com.oracle.database.jdbc" % "ojdbc11" % "23.7.0.25.01" % Test
+```
+
+> **Note:** The quick-start examples below use PostgreSQL. Add the corresponding driver dependency before running them.
 
 ## Quick Start
 
