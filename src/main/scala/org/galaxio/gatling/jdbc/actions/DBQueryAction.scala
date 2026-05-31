@@ -24,24 +24,18 @@ case class DBQueryAction(
 
   override def name: String = genName("jdbcQueryAction")
 
-  private def resolveParams(session: Session) =
-    params
-      .foldLeft(Map[String, Any]().success) { case (r, (k, v)) =>
-        r.flatMap(m => v(session).map(rv => m + (k -> rv)))
-      }
-
   override def execute(session: Session): Unit =
     (for {
       resolvedName    <- requestName(session)
       resolvedQuery   <- sql(session)
-      resolvedParams  <- resolveParams(session)
+      resolvedParams  <- resolveParams(session, params)
       parametrisedSql <- SQL(resolvedQuery).withParamsMap(resolvedParams).success
-      startTime       <- ctx.coreComponents.clock.nowMillis.success
+      startTime       <- now.success
 
     } yield dbClient
       .executeSelect(parametrisedSql.sql, parametrisedSql.params)(
         value => {
-          val received            = ctx.coreComponents.clock.nowMillis
+          val received            = now
           val (newSession, error) = Check.check(value, session, checks.toList, new JHashMap[Any, Any]())
 
           error match {
@@ -59,33 +53,9 @@ case class DBQueryAction(
             case _                            => executeNext(newSession, startTime, received, OK, next, resolvedName, None, None)
           }
         },
-        exception =>
-          executeNext(
-            session.markAsFailed,
-            startTime,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            resolvedName,
-            Some("ERROR"),
-            Some(exception.getMessage),
-          ),
+        exception => reportError(session, startTime, resolvedName, exception),
       ))
-      .onFailure(m =>
-        requestName(session).map { rn =>
-          ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, m)
-          executeNext(
-            session.markAsFailed,
-            ctx.coreComponents.clock.nowMillis,
-            ctx.coreComponents.clock.nowMillis,
-            KO,
-            next,
-            rn,
-            Some("ERROR"),
-            Some(m),
-          )
-        },
-      )
+      .onFailure(crashOnFailure(session, requestName))
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }
