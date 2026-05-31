@@ -71,7 +71,7 @@ class JDBCClientThreadingSpec extends AnyFlatSpec with Matchers {
 
     override def getConnection: Connection = {
       startedConnections.countDown()
-      releaseConnections.await(5, TimeUnit.SECONDS)
+      require(releaseConnections.await(5, TimeUnit.SECONDS), "releaseConnections latch timed out")
       connection
     }
 

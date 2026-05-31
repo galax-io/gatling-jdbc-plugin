@@ -70,7 +70,7 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
 
 final case class JdbcProtocolBuilder(
     hikariConfig: HikariConfig,
-    blockingPoolSize: Int,
+    private[protocol] val blockingPoolSize: Int,
     queryTimeout: Option[FiniteDuration] = None,
 ) {
 

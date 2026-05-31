@@ -15,15 +15,15 @@ public class JdbcProtocolBuilderConnectionSettingsStep {
         return new JdbcProtocolBuilder(wrapped.protocolBuilder());
     }
 
-    public JdbcProtocolBuilderConnectionSettingsStep maximumPoolSize(Integer newValue){
+    public JdbcProtocolBuilderConnectionSettingsStep maximumPoolSize(int newValue){
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.maximumPoolSize(newValue));
     }
 
-    public JdbcProtocolBuilderConnectionSettingsStep minimumIdleConnections(Integer newValue){
+    public JdbcProtocolBuilderConnectionSettingsStep minimumIdleConnections(int newValue){
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.minimumIdleConnections(newValue));
     }
 
-    public JdbcProtocolBuilderConnectionSettingsStep blockingPoolSize(Integer newValue){
+    public JdbcProtocolBuilderConnectionSettingsStep blockingPoolSize(int newValue){
         return new JdbcProtocolBuilderConnectionSettingsStep(wrapped.blockingPoolSize(newValue));
     }
 

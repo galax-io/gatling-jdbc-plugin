@@ -5,7 +5,7 @@ import JDBCClient.Interpolator
 import statements._
 import statements.{CallableStatementWrapper, PreparedStatementWrapper, StatementWrapper}
 
-import java.util.concurrent.ExecutorService
+import java.util.concurrent.{ExecutorService, TimeUnit}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.{Failure, Success}
@@ -189,5 +189,6 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
   def close(): Unit = {
     pool.close()
     blockingPool.shutdown()
+    blockingPool.awaitTermination(30, TimeUnit.SECONDS)
   }
 }
