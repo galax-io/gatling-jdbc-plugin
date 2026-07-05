@@ -20,6 +20,6 @@ object Dependencies {
 
   private val testcontainersVersion = "1.21.0"
   lazy val testcontainersPg         = "org.testcontainers" % "postgresql" % testcontainersVersion % Test
-  lazy val postgresJdbc             = "org.postgresql"     % "postgresql" % "42.7.11"             % Test
+  lazy val postgresJdbc             = "org.postgresql"     % "postgresql" % "42.7.12"             % Test
 
 }
