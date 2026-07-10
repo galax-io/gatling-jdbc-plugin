@@ -56,18 +56,18 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
   }
 
   it should "select inserted rows via executeSelect" in {
-    for {
-      _         <- client.executeUpdate("INSERT INTO items (name) VALUES ({name})", Seq("name" -> StrParam("bob"))) { result =>
-                     result.success.value shouldBe 1
-                   }
-      assertion <- client.executeSelect("SELECT name FROM items WHERE name = {name}", Seq("name" -> StrParam("bob"))) {
-                     result =>
-                       val rows = result.success.value
+    client
+      .executeUpdate("INSERT INTO items (name) VALUES ({name})", Seq("name" -> StrParam("bob"))) { result =>
+        result.success.value shouldBe 1
+      }
+      .flatMap(_ =>
+        client.executeSelect("SELECT name FROM items WHERE name = {name}", Seq("name" -> StrParam("bob"))) { result =>
+          val rows = result.success.value
 
-                       rows should not be empty
-                       rows.head("name") shouldBe "bob"
-                   }
-    } yield assertion
+          rows should not be empty
+          rows.head("name") shouldBe "bob"
+        },
+      )
   }
 
   it should "execute batch inserts and return row counts" in {
