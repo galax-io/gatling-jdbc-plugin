@@ -120,8 +120,8 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
 
   /** Execute a stored-procedure call and return the OUT parameter values surfaced by the database.
     *
-    * If no OUT parameters are declared the success callback receives an empty map. The update-count returned by `executeUpdate`
-    * is intentionally not surfaced because stored procedures do not reliably report it across drivers; callers that need row
+    * If no OUT parameters are declared, the result will be an empty map. The update-count returned by `executeUpdate` is
+    * intentionally not surfaced because stored procedures do not reliably report it across drivers; callers that need row
     * counts should use [[executeUpdate]] instead.
     *
     * @param sqlCall
@@ -130,10 +130,8 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     *   IN parameter bindings
     * @param outParams
     *   OUT parameter declarations: name → java.sql.Types constant
-    * @param s
-    *   success callback receiving a map of OUT parameter name → value
-    * @param f
-    *   failure callback
+    * @param consumer
+    *   a callback that will be called synchronously on the same thread the SQL call ran on to receive the result
     */
   def call[U](sqlCall: String, params: Seq[(String, ParamVal)], outParams: Seq[(String, Int)])(
       consumer: Try[Map[String, Any]] => U,
