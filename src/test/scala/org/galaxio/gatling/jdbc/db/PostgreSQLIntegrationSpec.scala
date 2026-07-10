@@ -78,17 +78,13 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
     )
 
     client.batch(queries) { result =>
-      val counts = result.success.value
-
-      counts should have length 3
-      counts.foreach(_ shouldBe 1)
-      succeed
+      result.success.value shouldBe Array(1, 1, 1)
     }
   }
 
   it should "propagate SQLException for invalid SQL" in {
     client.executeRaw("THIS IS NOT VALID SQL !!!") { result =>
-      result.isFailure shouldBe true
+      result shouldBe a[Failure[_]]
     }
   }
 
@@ -169,7 +165,7 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
   it should "return connections to pool after failed query" in {
     client
       .executeRaw("INVALID SQL") { result =>
-        result.isFailure shouldBe true
+        result shouldBe a[Failure[_]]
       }
       .map { _ =>
         Thread.sleep(200)
