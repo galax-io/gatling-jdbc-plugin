@@ -31,9 +31,8 @@ class JDBCClientFailureSpec extends AsyncFlatSpec with Matchers {
     val blockingPool = Executors.newFixedThreadPool(4)
     val client       = JDBCClient(ds, blockingPool)
 
-    val future = f(client)
-    future.onComplete(_ => client.close())
-    future
+    f(client)
+      .andThen(_ => client.close())
   }
 
   "JDBCClient.executeRaw" should "fail the Try if the SQL is invalid" in
