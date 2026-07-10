@@ -1,14 +1,16 @@
 package org.galaxio.gatling.jdbc.actions
 
 import io.gatling.commons.stats.OK
-import io.gatling.commons.validation._
 import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
 import io.gatling.core.structure.ScenarioContext
 import io.gatling.core.util.NameGen
 import actions.{BatchAction, BatchInsertAction, BatchUpdateAction}
+import io.gatling.commons.validation.{SuccessWrapper, Validation}
 import io.gatling.core.stats.StatsEngine
 import org.galaxio.gatling.jdbc.db._
+
+import scala.util.{Failure, Success}
 
 final case class DBBatchAction(
     batchName: Expression[String],
@@ -56,18 +58,16 @@ final case class DBBatchAction(
       } yield sql
   }
 
-  override protected def execute(session: Session): Unit = {
+  override protected def execute(session: Session): Unit =
     (for {
       resolvedBatchName    <- batchName(session)
       sqlQueriesWithParams <- actions.traverse(resolveBatchAction(session))
-      startTime            <- now.success
-    } yield dbClient
-      .batch(sqlQueriesWithParams)(
-        _ => executeNext(session, startTime, now, OK, next, resolvedBatchName, None, None),
-        e => reportError(session, startTime, resolvedBatchName, e),
-      ))
+      startTime             = now
+    } yield dbClient.batch(sqlQueriesWithParams) {
+      case Success(_)         => executeNext(session, startTime, now, OK, next, resolvedBatchName, None, None)
+      case Failure(exception) => reportError(session, startTime, resolvedBatchName, exception)
+    })
       .onFailure(crashOnFailure(session, batchName))
-  }
 
   override def statsEngine: StatsEngine = ctx.coreComponents.statsEngine
 }

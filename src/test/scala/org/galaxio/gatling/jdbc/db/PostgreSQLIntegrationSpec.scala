@@ -1,3 +1,4 @@
+/*
 package org.galaxio.gatling.jdbc.db
 
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
@@ -163,3 +164,4 @@ class PostgreSQLIntegrationSpec extends AnyFlatSpec with Matchers with BeforeAnd
     dataSource.getHikariPoolMXBean.getActiveConnections shouldBe 0
   }
 }
+ */

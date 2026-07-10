@@ -2,17 +2,18 @@ package org.galaxio.gatling.jdbc.db
 
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import org.scalatest.BeforeAndAfterAll
-import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.TryValues.convertTryToSuccessOrFailure
+import org.scalatest.flatspec.AsyncFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import java.time.LocalDateTime
 import java.util.UUID
-import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
+import java.util.concurrent.Executors
+import scala.util.Failure
 
 /** Regression tests for issue #33: batch execution should use prepared statements instead of inlining raw quoted strings, so
   * that string values containing single-quotes are handled safely.
   */
-class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class BatchPreparedStatementSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll {
 
   private var dataSource: HikariDataSource = _
   private var client: JDBCClient           = _
@@ -46,27 +47,16 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
     client.close()
   }
 
-  private def await[T](block: (T => Unit, Throwable => Unit) => Unit): Either[Throwable, T] = {
-    val latch  = new CountDownLatch(1)
-    var result = Option.empty[Either[Throwable, T]]
-    block(
-      v => { result = Some(Right(v)); latch.countDown() },
-      e => { result = Some(Left(e)); latch.countDown() },
-    )
-    latch.await(5, TimeUnit.SECONDS) shouldBe true
-    result.getOrElse(Left(new RuntimeException("no result")))
-  }
-
   private def clearTable(): Unit = {
     val conn = dataSource.getConnection
-    try conn.createStatement().execute("DELETE FROM batch_items")
+    try conn.createStatement().execute("DELETE FROM BATCH_ITEMS")
     finally conn.close()
   }
 
   private def countRows(): Int = {
     val conn = dataSource.getConnection
     try {
-      val rs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM batch_items")
+      val rs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM BATCH_ITEMS")
       rs.next()
       rs.getInt(1)
     } finally conn.close()
@@ -86,10 +76,11 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 1, "name" -> "hello", "flag" -> true, "val" -> 1.5)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
-    countRows() shouldBe 1
-    fetchName(1) shouldBe "hello"
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1)
+      countRows() shouldBe 1
+      fetchName(1) shouldBe "hello"
+    }
   }
 
   it should "safely handle string values containing single-quotes (regression for #33)" in {
@@ -99,9 +90,10 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 2, "name" -> dangerous, "flag" -> false, "val" -> 0.0)),
     )
-    val result    = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
-    fetchName(2) shouldBe dangerous
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1)
+      fetchName(2) shouldBe dangerous
+    }
   }
 
   it should "safely handle string values containing double single-quotes" in {
@@ -111,9 +103,10 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 3, "name" -> tricky, "flag" -> false, "val" -> 0.0)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
-    fetchName(3) shouldBe tricky
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1)
+      fetchName(3) shouldBe tricky
+    }
   }
 
   // withParamsMap treats the string literal "NULL" as a sentinel that maps to NullParam (SQL NULL).
@@ -126,14 +119,16 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 4, "name" -> "NULL", "flag" -> false, "val" -> 0.0)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
-    fetchName(4) shouldBe null
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1)
+      fetchName(4) shouldBe null
+    }
   }
 
   it should "return Array.empty without error for an empty batch" in {
-    val result = await[Array[Int]](client.batch(Seq.empty))
-    result.map(_.toList) shouldBe Right(List.empty[Int])
+    client.batch(Seq.empty) { result =>
+      result.success.value shouldBe Array.empty
+    }
   }
 
   it should "handle UUID parameter type" in {
@@ -144,9 +139,9 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
         .createStatement()
         .execute(
           """CREATE TABLE IF NOT EXISTS batch_uuid_items (
-          |  id   UUID PRIMARY KEY,
-          |  name VARCHAR(255)
-          |)""".stripMargin,
+            |  id   UUID PRIMARY KEY,
+            |  name VARCHAR(255)
+            |)""".stripMargin,
         )
     } finally conn.close()
 
@@ -155,15 +150,16 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_uuid_items (id, name) VALUES ({id},{name})")
         .withParamsMap(Map("id" -> id, "name" -> "uuid-test")),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1)
 
-    val conn2 = dataSource.getConnection
-    try {
-      val rs = conn2.createStatement().executeQuery(s"SELECT name FROM batch_uuid_items WHERE id = '$id'")
-      rs.next() shouldBe true
-      rs.getString(1) shouldBe "uuid-test"
-    } finally conn2.close()
+      val conn2 = dataSource.getConnection
+      try {
+        val rs = conn2.createStatement().executeQuery(s"SELECT name FROM batch_uuid_items WHERE id = '$id'")
+        rs.next() shouldBe true
+        rs.getString(1) shouldBe "uuid-test"
+      } finally conn2.close()
+    }
   }
 
   it should "handle multiple queries in a single batch" in {
@@ -176,10 +172,11 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 12, "name" -> "third", "flag" -> true, "val" -> 3.0)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
-    countRows() shouldBe 3
-    fetchName(11) shouldBe "O'Reilly"
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1, 1, 1)
+      countRows() shouldBe 3
+      fetchName(11) shouldBe "O'Reilly"
+    }
   }
 
   it should "return counts for each executed query" in {
@@ -190,8 +187,9 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 21, "name" -> "b", "flag" -> false, "val" -> 2.0)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result.map(_.toList) shouldBe Right(List(1, 1))
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1, 1)
+    }
   }
 
   it should "handle boolean and double values" in {
@@ -200,9 +198,10 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 30, "name" -> "booltest", "flag" -> true, "val" -> 3.14)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Right[_, _]]
-    countRows() shouldBe 1
+    client.batch(queries) { result =>
+      result.success.value shouldBe Array(1)
+      countRows() shouldBe 1
+    }
   }
 
   it should "rollback all changes when a batch query fails mid-way" in {
@@ -215,8 +214,10 @@ class BatchPreparedStatementSpec extends AnyFlatSpec with Matchers with BeforeAn
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
         .withParamsMap(Map("id" -> 40, "name" -> "duplicate-pk", "flag" -> false, "val" -> 2.0)),
     )
-    val result  = await[Array[Int]](client.batch(queries))
-    result shouldBe a[Left[_, _]]
-    countRows() shouldBe 0
+    client.batch(queries) { result =>
+      result shouldBe a[Failure[_]]
+      result.failure
+      countRows() shouldBe 0
+    }
   }
 }

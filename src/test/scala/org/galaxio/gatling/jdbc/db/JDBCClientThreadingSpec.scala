@@ -25,10 +25,9 @@ class JDBCClientThreadingSpec extends AnyFlatSpec with Matchers {
 
     try {
       (1 to requestCount).foreach { _ =>
-        client.executeRaw("SELECT 1")(
-          _ => completions.countDown(),
-          _ => completions.countDown(),
-        )
+        client.executeRaw("SELECT 1") { _ =>
+          completions.countDown()
+        }
       }
 
       startedConnections.await(5, TimeUnit.SECONDS) shouldBe true
