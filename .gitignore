@@ -9,3 +9,10 @@
 /target/
 /results/
 .DS_Store
+
+### Metals / Bloop
+.mcp.json
+/.metals/
+/.bloop/
+/project/metals.sbt
+/project/.bloop/
