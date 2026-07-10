@@ -50,9 +50,6 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     else math.max(0, secs.toInt)
   }
 
-  private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
-    ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)
-
   private def withConnectionForBatch[T](op: (Using.Manager, Connection) => T): Try[T] =
     Using.Manager { use =>
       val conn = use(pool.getConnection)
@@ -93,11 +90,6 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
       stmt.setParams(interpolatedCtx, inParams, outParams)
       op(use, stmt)
     }
-  }
-
-  private def withCompletion[T, U](fut: Future[T])(s: T => U, f: Throwable => U): Unit = fut.onComplete {
-    case Success(value)     => s(value)
-    case Failure(exception) => f(exception)
   }
 
   def executeRaw[U](sql: String)(consumer: Try[Boolean] => U): Future[U] = Future {
