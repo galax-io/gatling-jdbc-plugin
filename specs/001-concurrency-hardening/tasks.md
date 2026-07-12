@@ -23,9 +23,9 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 **Purpose**: Land spec artifacts first (Constitution IV), confirm green baseline.
 
-- [ ] T001 Commit spec artifacts: `git add specs/001-concurrency-hardening .specify/feature.json && git commit -m "docs(speckit): add 001-concurrency-hardening spec/plan/tasks"`. Do NOT include CLAUDE.md (AGENTS.md: never commit CLAUDE.md unless user explicitly asks).
-- [ ] T002 [P] Verify baseline green on branch `001-concurrency-hardening`: `sbt scalafmtCheckAll scalafmtSbtCheck compile test`
-- [ ] T003 [P] Verify Docker available for Testcontainers (`docker info`); if unavailable, note that PostgreSQL specs (US2/US3 parts) must run in CI
+- [x] T001 Commit spec artifacts: `git add specs/001-concurrency-hardening .specify/feature.json && git commit -m "docs(speckit): add 001-concurrency-hardening spec/plan/tasks"`. Do NOT include CLAUDE.md (AGENTS.md: never commit CLAUDE.md unless user explicitly asks).
+- [x] T002 [P] Verify baseline green on branch `001-concurrency-hardening`: `sbt scalafmtCheckAll scalafmtSbtCheck compile test`
+- [x] T003 [P] Verify Docker available for Testcontainers (`docker info`); if unavailable, note that PostgreSQL specs (US2/US3 parts) must run in CI
 
 ---
 
@@ -35,8 +35,8 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 **⚠️ CRITICAL**: US1/US2/U4 test tasks import these helpers; write them first. They are committed together with the first story commit that uses them (helpers alone don't map to an issue).
 
-- [ ] T004 Create concurrency-recording statement proxy in src/test/scala/org/galaxio/gatling/jdbc/db/testsupport/RecordingStatementProxy.scala — JDK `java.lang.reflect.Proxy` factory wrapping a real H2 `PreparedStatement`/`CallableStatement`; `InvocationHandler` tracks: current/max concurrent entries into `set*`/`setObject`/`registerOutParameter` (AtomicInteger enter/exit), per-index invocation counts, bound values per index; delegates every call to the real statement. Serves US1+US2 (contract G1.1/G1.3/G2.1).
-- [ ] T005 Create close-counting datasource in src/test/scala/org/galaxio/gatling/jdbc/db/testsupport/CloseCountingDataSource.scala — test-only `HikariDataSource` subclass; `getConnection` returns JDK-proxy `Connection` that (a) counts `close()` per connection, (b) wraps created `Statement`/`PreparedStatement`/`CallableStatement` in close-counting proxies, (c) supports injecting a non-fatal exception from one resource's `close()`. Serves US4 (contract G4.1/G4.2). No production seam — research.md decision.
+- [x] T004 Create concurrency-recording statement proxy in src/test/scala/org/galaxio/gatling/jdbc/db/testsupport/RecordingStatementProxy.scala — JDK `java.lang.reflect.Proxy` factory wrapping a real H2 `PreparedStatement`/`CallableStatement`; `InvocationHandler` tracks: current/max concurrent entries into `set*`/`setObject`/`registerOutParameter` (AtomicInteger enter/exit), per-index invocation counts, bound values per index; delegates every call to the real statement. Serves US1+US2 (contract G1.1/G1.3/G2.1).
+- [x] T005 Create close-counting datasource in src/test/scala/org/galaxio/gatling/jdbc/db/testsupport/CloseCountingDataSource.scala — test-only `HikariDataSource` subclass; `getConnection` returns JDK-proxy `Connection` that (a) counts `close()` per connection, (b) wraps created `Statement`/`PreparedStatement`/`CallableStatement` in close-counting proxies, (c) supports injecting a non-fatal exception from one resource's `close()`. Serves US4 (contract G4.1/G4.2). No production seam — research.md decision.
 
 **Checkpoint**: helpers compile; user stories can start.
 
@@ -50,12 +50,12 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 ### Tests for User Story 1
 
-- [ ] T006 [US1] Create src/test/scala/org/galaxio/gatling/jdbc/db/StatementParamsConcurrencySpec.scala (prepared-statement cases, using T004 proxy over real H2 connection): multi-param SQL (all `ParamVal` kinds incl. UUID, null, boolean, date) → assert max concurrent setter entry == 1; each JDBC index bound exactly once; bound values equal declared values; duplicate placeholder (`{a},{b},{a}`) binds every mapped index exactly once; zero-param and single-param edge cases prepare successfully; missing binding for a placeholder → operation fails with original exception, statement never executed (G1.4)
-- [ ] T007 [P] [US1] Extend src/test/scala/org/galaxio/gatling/jdbc/db/PostgreSQLIntegrationSpec.scala with concurrent value-correctness case: N≥50 concurrent `executeUpdate` inserts with distinct known multi-param rows through one `JDBCClient` → read back via `executeSelect`, assert 100% of rows contain exactly the declared values (SC-002)
+- [x] T006 [US1] Create src/test/scala/org/galaxio/gatling/jdbc/db/StatementParamsConcurrencySpec.scala (prepared-statement cases, using T004 proxy over real H2 connection): multi-param SQL (all `ParamVal` kinds incl. UUID, null, boolean, date) → assert max concurrent setter entry == 1; each JDBC index bound exactly once; bound values equal declared values; duplicate placeholder (`{a},{b},{a}`) binds every mapped index exactly once; zero-param and single-param edge cases prepare successfully; missing binding for a placeholder → operation fails with original exception, statement never executed (G1.4)
+- [x] T007 [P] [US1] Extend src/test/scala/org/galaxio/gatling/jdbc/db/PostgreSQLIntegrationSpec.scala with concurrent value-correctness case: N≥50 concurrent `executeUpdate` inserts with distinct known multi-param rows through one `JDBCClient` → read back via `executeSelect`, assert 100% of rows contain exactly the declared values (SC-002)
 
 ### Commit for User Story 1
 
-- [ ] T008 [US1] Format + gate + commit: `sbt scalafmtAll scalafmtSbt && sbt scalafmtCheckAll scalafmtSbtCheck compile test`, then `git add src/test && git commit -m "test(db): prove serialized PreparedStatement param binding (#120)"` (includes T004 helper; T005 if not yet committed stays unstaged)
+- [x] T008 [US1] Format + gate + commit: `sbt scalafmtAll scalafmtSbt && sbt scalafmtCheckAll scalafmtSbtCheck compile test`, then `git add src/test && git commit -m "test(db): prove serialized PreparedStatement param binding (#120)"` (includes T004 helper; T005 if not yet committed stays unstaged)
 
 **Checkpoint**: US1 independently green; #120 acceptance satisfied.
 
@@ -69,12 +69,13 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 ### Tests for User Story 2
 
-- [ ] T009 [US2] Add callable-statement cases to src/test/scala/org/galaxio/gatling/jdbc/db/StatementParamsConcurrencySpec.scala (T004 proxy over real H2 `CallableStatement` via `CREATE ALIAS`): mixed IN+OUT call → assert max concurrent setter/`registerOutParameter` entry == 1; every IN index bound exactly once; every OUT index registered exactly once; only-IN and only-OUT calls hold the same invariants; missing OUT placeholder → `IllegalArgumentException` naming missing params (G2.3, existing behavior)
-- [ ] T010 [P] [US2] Extend src/test/scala/org/galaxio/gatling/jdbc/db/PostgreSQLIntegrationSpec.scala with stored-procedure-under-load case: PostgreSQL function with IN + OUT params (`CREATE FUNCTION`), N≥50 concurrent `call` invocations with distinct inputs → every call returns correct OUT values for its inputs (SC-002)
+- [x] T009 [US2] Add callable-statement cases to src/test/scala/org/galaxio/gatling/jdbc/db/StatementParamsConcurrencySpec.scala (T004 proxy over real H2 `CallableStatement` via `CREATE ALIAS`): mixed IN+OUT call → assert max concurrent setter/`registerOutParameter` entry == 1; every IN index bound exactly once; every OUT index registered exactly once; only-IN and only-OUT calls hold the same invariants; missing OUT placeholder → `IllegalArgumentException` naming missing params (G2.3, existing behavior)
+- [x] T010 [P] [US2] Extend src/test/scala/org/galaxio/gatling/jdbc/db/PostgreSQLIntegrationSpec.scala with stored-procedure-under-load case: PostgreSQL function with IN + OUT params (`CREATE FUNCTION`), N≥50 concurrent `call` invocations with distinct inputs → every call returns correct OUT values for its inputs (SC-002)
+  > **As built**: implemented on H2 (`CREATE ALIAS` + `? = CALL`, 50 concurrent `client.call`s in StatementParamsConcurrencySpec) instead of PostgreSQL. The pgjdbc OUT-parameter path requires the JDBC `{call ...}` escape syntax, but literal braces are consumed by the plugin's named-placeholder interpolator — a real product limitation worth its own issue; H2 provides the real-database OUT path without it.
 
 ### Commit for User Story 2
 
-- [ ] T011 [US2] Format + gate + commit: `sbt scalafmtAll scalafmtSbt && sbt scalafmtCheckAll scalafmtSbtCheck compile test`, then `git commit -m "test(db): prove serialized CallableStatement IN/OUT registration (#121)"`
+- [x] T011 [US2] Format + gate + commit: `sbt scalafmtAll scalafmtSbt && sbt scalafmtCheckAll scalafmtSbtCheck compile test`, then `git commit -m "test(db): prove serialized CallableStatement IN/OUT registration (#121)"`
 
 **Checkpoint**: US1+US2 green independently.
 
@@ -88,12 +89,13 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 ### Tests for User Story 3
 
-- [ ] T012 [US3] Create src/test/scala/org/galaxio/gatling/jdbc/db/BatchQueryTimeoutSpec.scala (PostgreSQL Testcontainers, pattern from PostgreSQLIntegrationSpec:110-134): (a) `JDBCClient` with `queryTimeout = 1.second`, batch `INSERT ... SELECT ... , pg_sleep(10)` → `batch` completes as `Failure` (KO) within ~1s + fixed margin (assert wall-clock < 5s, not 10s), transaction rolled back, connection returned to pool; (b) same client, fast batch → succeeds with correct counts; (c) client with `queryTimeout = None`, moderately slow batch → completes without implicit timeout (G3.3)
-- [ ] T013 [US3] CONTINGENCY (only if T012(a) shows timeout not aborting): fix batch execution in src/main/scala/org/galaxio/gatling/jdbc/db/JDBCClient.scala `batch` method only, preserving G3.3/G3.4 and rollback semantics; re-run T012
+- [x] T012 [US3] Create src/test/scala/org/galaxio/gatling/jdbc/db/BatchQueryTimeoutSpec.scala (PostgreSQL Testcontainers, pattern from PostgreSQLIntegrationSpec:110-134): (a) `JDBCClient` with `queryTimeout = 1.second`, batch `INSERT ... SELECT ... , pg_sleep(10)` → `batch` completes as `Failure` (KO) within ~1s + fixed margin (assert wall-clock < 5s, not 10s), transaction rolled back, connection returned to pool; (b) same client, fast batch → succeeds with correct counts; (c) client with `queryTimeout = None`, moderately slow batch → completes without implicit timeout (G3.3)
+- [x] T013 [US3] CONTINGENCY (only if T012(a) shows timeout not aborting): fix batch execution in src/main/scala/org/galaxio/gatling/jdbc/db/JDBCClient.scala `batch` method only, preserving G3.3/G3.4 and rollback semantics; re-run T012
+  > **Not needed**: T012(a) is green — the driver aborts the slow batch at the configured timeout (Failure in <5s vs a 10s sleep), rollback and pool release verified. No production change.
 
 ### Commit for User Story 3
 
-- [ ] T014 [US3] Format + gate + commit: `test(db): prove batch honors configured queryTimeout (#83)` — or `fix(db): enforce queryTimeout on batch statements (#83)` if T013 executed
+- [x] T014 [US3] Format + gate + commit: `test(db): prove batch honors configured queryTimeout (#83)` — or `fix(db): enforce queryTimeout on batch statements (#83)` if T013 executed
 
 **Checkpoint**: US1-US3 green independently.
 
@@ -107,11 +109,11 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 ### Tests for User Story 4
 
-- [ ] T015 [US4] Create src/test/scala/org/galaxio/gatling/jdbc/db/ResourceReleaseOnSyncThrowSpec.scala using T005 `CloseCountingDataSource` over H2: (a) sync-throw path — `executeSelect` with missing param binding (throws inside `Using` block before execution) → `Failure` carries original exception; every acquired resource's `close()` invoked exactly once; (b) combined-failure — operation fails AND one proxy resource's `close()` throws non-fatal exception → original exception is primary, close failure attached as suppressed (G4.2); (c) soak loop — ≥100 iterations of failing ops → per-iteration close counts stay exactly-once, `HikariPoolMXBean.getActiveConnections == 0` at end (SC-004); (d) success-path control — close counts exactly-once on success too (no regression)
+- [x] T015 [US4] Create src/test/scala/org/galaxio/gatling/jdbc/db/ResourceReleaseOnSyncThrowSpec.scala using T005 `CloseCountingDataSource` over H2: (a) sync-throw path — `executeSelect` with missing param binding (throws inside `Using` block before execution) → `Failure` carries original exception; every acquired resource's `close()` invoked exactly once; (b) combined-failure — operation fails AND one proxy resource's `close()` throws non-fatal exception → original exception is primary, close failure attached as suppressed (G4.2); (c) soak loop — ≥100 iterations of failing ops → per-iteration close counts stay exactly-once, `HikariPoolMXBean.getActiveConnections == 0` at end (SC-004); (d) success-path control — close counts exactly-once on success too (no regression)
 
 ### Commit for User Story 4
 
-- [ ] T016 [US4] Format + gate + commit: `test(db): prove exactly-once resource release on synchronous failure (#100)` (includes T005 helper)
+- [x] T016 [US4] Format + gate + commit: `test(db): prove exactly-once resource release on synchronous failure (#100)` (includes T005 helper)
 
 **Checkpoint**: all four stories green independently.
 
@@ -121,10 +123,10 @@ Single sbt project: `src/main/scala/...`, `src/test/scala/...` at repository roo
 
 **Purpose**: Whole-suite verification, milestone-linked delivery.
 
-- [ ] T017 [P] Run example simulation regression guard: `sbt "Gatling / testOnly org.galaxio.performance.jdbc.test.DebugTest"` (SC-005)
-- [ ] T018 [P] Full gate + coverage: `sbt scalafmtCheckAll scalafmtSbtCheck compile test` and `sbt coverage test coverageReport coverageOff`
-- [ ] T019 Push branch and open PR to `main` titled `test(db): concurrency & resource-safety regression coverage for v1.2.0`, body with `Closes #83`, `Closes #100`, `Closes #120`, `Closes #121`, assigned to milestone `v1.2.0 — Connection-pool deadlock & concurrency hardening` (milestone 12); PR text states pool/timeout/thread analysis per Constitution III
-- [ ] T020 Validate linkage: `scripts/check-linkage.sh --pr <N>` passes (milestone + Closes + issues in same milestone)
+- [x] T017 [P] Run example simulation regression guard: `sbt "Gatling / testOnly org.galaxio.performance.jdbc.test.DebugTest"` (SC-005)
+- [x] T018 [P] Full gate + coverage: `sbt scalafmtCheckAll scalafmtSbtCheck compile test` and `sbt coverage test coverageReport coverageOff`
+- [x] T019 Push branch and open PR to `main` titled `test(db): concurrency & resource-safety regression coverage for v1.2.0`, body with `Closes #83`, `Closes #100`, `Closes #120`, `Closes #121`, assigned to milestone `v1.2.0 — Connection-pool deadlock & concurrency hardening` (milestone 12); PR text states pool/timeout/thread analysis per Constitution III
+- [x] T020 Validate linkage: `scripts/check-linkage.sh --pr <N>` passes (milestone + Closes + issues in same milestone)
 
 ---
 
