@@ -90,9 +90,16 @@ if [ -n "$FOR_TAG" ]; then
   TAG_MODE=1
 fi
 
-# Default to the lowest-numbered open milestone (the "active" one).
+# Default to the current release milestone: the lowest-semver OPEN "vX.Y.0 …" one.
+# (Thematic/backlog milestones are not "current" — they carry no vX.Y.0 title.)
 if [ -z "$MS" ]; then
-  MS=$(gh api "repos/$REPO/milestones?state=open&per_page=100" --jq 'sort_by(.number) | .[0].number // empty')
+  MS=$(gh api "repos/$REPO/milestones?state=open&per_page=100" --jq '
+    [ .[]
+      | select(.title | test("^v[0-9]+\\.[0-9]+\\.0"))
+      | . + { _k: ((.title | capture("^v(?<a>[0-9]+)\\.(?<b>[0-9]+)")) | (.a|tonumber) * 100000 + (.b|tonumber)) }
+    ] | sort_by(._k) | .[0].number // empty')
+  # Fallback (no version milestone yet): lowest-numbered open, the legacy behaviour.
+  [ -n "$MS" ] || MS=$(gh api "repos/$REPO/milestones?state=open&per_page=100" --jq 'sort_by(.number) | .[0].number // empty')
   [ -n "$MS" ] || { echo "error: no open milestone found in $REPO" >&2; exit 2; }
 fi
 
