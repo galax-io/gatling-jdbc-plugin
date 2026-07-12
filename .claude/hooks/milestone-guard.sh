@@ -1,96 +1,31 @@
 #!/usr/bin/env bash
-#
-# milestone-guard.sh — PreToolUse(Bash) hook.
-# Milestone *assignments* of an issue/PR must target the CURRENT release milestone
-# (the single open `vX.Y.0 …` milestone). Blocks scattering work into thematic or
-# other-version milestones. Read-only `gh` calls and any command without a milestone
-# assignment pass untouched with no network call (~0 tokens).
-#
-# "Current" = lowest-semver OPEN milestone whose title starts with `vX.Y.0`
-# (same definition check-linkage.sh uses). Keep it in sync with that script.
-#
-# Bypass a deliberate backlog/deferral move by prefixing the command:
-#   MILESTONE_GUARD_OFF=1 gh issue edit 42 --milestone "1d — …"
+# PreToolUse(Bash): an issue/PR milestone may only be the current vX.Y.0 release
+# milestone. Fires ONLY on a real gh assignment command (not text that mentions one);
+# reads and everything else pass. Bypass a backlog move: MILESTONE_GUARD_OFF=1 <cmd>
 set -uo pipefail
-
-input=$(cat)
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || true)
-[ -n "$cmd" ] || exit 0
-
-# Fast path: only gh commands that mention a milestone are ever in scope.
-case "$cmd" in *"gh "*) ;; *) exit 0 ;; esac
-case "$cmd" in *milestone*) ;; *) exit 0 ;; esac
-# Explicit opt-out for intentional off-milestone moves.
+cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
 case "$cmd" in *MILESTONE_GUARD_OFF=1*) exit 0 ;; esac
 
-block() { printf 'BLOCKED by milestone-guard:\n%s\n' "$1" >&2; exit 2; }
+# In scope only when gh actually assigns a milestone: `issue|pr edit|create --milestone`,
+# or `api … -F milestone=`. Anchored to the subcommand so a commit message or echo that
+# merely contains "--milestone" does not trigger it.
+is_assign=0
+{ printf '%s' "$cmd" | grep -qE '\bgh +(issue|pr) +(edit|create)\b' && printf '%s' "$cmd" | grep -qE -- '--milestone[= ]'; } && is_assign=1
+{ printf '%s' "$cmd" | grep -qE '\bgh +api\b'                       && printf '%s' "$cmd" | grep -qE -- '-[fF] +milestone='; } && is_assign=1
+[ "$is_assign" = 1 ] || exit 0
 
-# --- Is this a milestone *assignment* (a write), not a read/list? -------------
-is_write=0
-# gh issue|pr edit|create ... --milestone <x>
-if printf '%s' "$cmd" | grep -qE '\bgh[[:space:]]+(issue|pr)[[:space:]]+(edit|create)\b' \
-   && printf '%s' "$cmd" | grep -qE -- '--milestone(=|[[:space:]])'; then
-  is_write=1
-fi
-# gh api writing a milestone= field (-f/-F/--field/--raw-field milestone=…) or an
-# explicit write method carrying a milestone= param. Query strings (?/&milestone=)
-# are reads and never match the field-flag form.
-if printf '%s' "$cmd" | grep -qE '\bgh[[:space:]]+api\b'; then
-  if printf '%s' "$cmd" | grep -qE -- '(-f|-F|--field|--raw-field)[[:space:]]+milestone=' \
-     || { printf '%s' "$cmd" | grep -qE -- '(--method|-X)[[:space:]]+(PATCH|POST|PUT)' \
-          && printf '%s' "$cmd" | grep -qE 'milestone=' ; }; then
-    is_write=1
-  fi
-fi
-[ "$is_write" = 1 ] || exit 0
+val=$(printf '%s' "$cmd" | grep -oE -- '--milestone[= ]+("[^"]*"|[^ ]+)|-[fF] +milestone=[^ ]+' | head -1 \
+      | sed -E 's/^--milestone[= ]+//; s/^-[fF] +milestone=//; s/^"//; s/"$//')
+[ -n "$val" ] || exit 0   # clearing a milestone → fine
 
-# Clearing a milestone is never a scatter.
-printf '%s' "$cmd" | grep -qE -- '--remove-milestone' && exit 0
+cur=$(bash "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}/scripts/current-milestone.sh" 2>/dev/null || true)
+[ -n "$cur" ] || exit 0   # no current milestone to compare against → stay out of the way
+num=$(printf '%s' "$cur" | cut -f1)
+ver=$(printf '%s' "$cur" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 
-# --- Extract the assigned milestone value -------------------------------------
-val=""
-# api field form: milestone=VALUE (a numeric id)
-val=$(printf '%s' "$cmd" | grep -oE 'milestone=[^ ]+' | head -1 | sed 's/^milestone=//')
-# --milestone=VALUE
-if [ -z "$val" ]; then
-  val=$(printf '%s' "$cmd" | grep -oE -- '--milestone=[^ ]+' | head -1 | sed 's/^--milestone=//')
-fi
-# --milestone VALUE  (quoted title, or a bare token)
-if [ -z "$val" ]; then
-  val=$(printf '%s' "$cmd" | sed -nE 's/.*--milestone[[:space:]]+"([^"]*)".*/\1/p' | head -1)
-  [ -z "$val" ] && val=$(printf '%s' "$cmd" | sed -nE "s/.*--milestone[[:space:]]+'([^']*)'.*/\1/p" | head -1)
-  [ -z "$val" ] && val=$(printf '%s' "$cmd" | sed -nE 's/.*--milestone[[:space:]]+([^ ]+).*/\1/p' | head -1)
-fi
-# strip a stray leading/trailing quote if one survived
-val=$(printf '%s' "$val" | sed -E 's/^["'"'"']//; s/["'"'"']$//')
-# Empty target = clearing the milestone; not a scatter.
-[ -n "$val" ] || exit 0
+# Pass if the target is the current number, or a title carrying the current version.
+[ "$val" = "$num" ] && exit 0
+[ -n "$ver" ] && printf '%s' "$val" | grep -qF "$ver" && exit 0
 
-# --- Resolve the current release milestone (shared resolver) ------------------
-root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-resolver="$root/scripts/current-milestone.sh"
-[ -f "$resolver" ] || block "current-milestone resolver missing ($resolver) — cannot verify milestone; bypass with MILESTONE_GUARD_OFF=1"
-cur=$(bash "$resolver" 2>/dev/null) \
-  || block "cannot determine repo to verify milestone — set REPO=owner/name, or bypass with MILESTONE_GUARD_OFF=1"
-[ -n "$cur" ] || block "no open version milestone (vX.Y.0) to assign into — create the release milestone first, or bypass with MILESTONE_GUARD_OFF=1.
-  target: $val"
-
-cur_num=$(printf '%s' "$cur" | cut -f1)
-cur_title=$(printf '%s' "$cur" | cut -f2)
-cur_ver=$(printf '%s' "$cur_title" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-
-# --- Compare target to current ------------------------------------------------
-ok=0
-if printf '%s' "$val" | grep -qE '^[0-9]+$'; then
-  [ "$val" = "$cur_num" ] && ok=1                       # assigned by milestone number
-else
-  vtok=$(printf '%s' "$val" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-  { [ -n "$vtok" ] && [ "$vtok" = "$cur_ver" ]; } && ok=1   # title carries the current version
-  [ "$val" = "$cur_title" ] && ok=1                    # exact title match
-fi
-[ "$ok" = 1 ] && exit 0
-
-block "issue/PR milestone must be the current release milestone.
-  current : #$cur_num  $cur_title
-  target  : $val
-Assign to #$cur_num (its number, title, or $cur_ver). To defer to the backlog on purpose, prefix: MILESTONE_GUARD_OFF=1 <cmd>"
+printf 'BLOCKED by milestone-guard: assign to the current milestone #%s (%s), not "%s".\nDeliberate backlog move? prefix MILESTONE_GUARD_OFF=1\n' "$num" "$ver" "$val" >&2
+exit 2
