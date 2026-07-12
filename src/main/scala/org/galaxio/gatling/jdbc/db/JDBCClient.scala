@@ -3,12 +3,12 @@ package org.galaxio.gatling.jdbc.db
 import com.zaxxer.hikari.HikariDataSource
 import JDBCClient.Interpolator
 import statements._
-import statements.{CallableStatementWrapper, PreparedStatementWrapper, StatementWrapper}
 
+import java.sql.{CallableStatement, Connection, PreparedStatement, Statement}
 import java.util.concurrent.{ExecutorService, TimeUnit}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try, Using}
 
 object JDBCClient {
   object Interpolator {
@@ -41,7 +41,7 @@ object JDBCClient {
     new JDBCClient(pool, blockingPool, queryTimeout)
 }
 
-class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None) {
+class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None) {
   private implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(blockingPool)
 
   private val queryTimeoutSeconds: Option[Int] = queryTimeout.map { d =>
@@ -50,72 +50,78 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
     else math.max(0, secs.toInt)
   }
 
-  private def connectionResource: ResourceFut[ConnectionWrapper[Future]] =
-    ResourceFut.make(Future(ConnectionWrapper.Impl(pool.getConnection, ec)))(_.close)
+  private def withConnectionForBatch[T](op: (Using.Manager, Connection) => T): Try[T] =
+    Using.Manager { use =>
+      val conn = use(pool.getConnection)
+      use(new DisableAutoCommit(conn))
+      op(use, conn)
+    }
 
-  private def connectionForBatchResource: ResourceFut[ConnectionWrapper[Future]] =
-    for {
-      conn       <- connectionResource
-      autoCommit <- ResourceFut.liftFuture(conn.getAutoCommit)
-      _          <- ResourceFut.liftFuture(conn.setAutoCommit(false))
-      _          <- ResourceFut.make(Future.successful(()))(_ => conn.setAutoCommit(autoCommit))
-    } yield conn
+  private def withStatement[T](op: (Using.Manager, Statement) => T): Try[T] =
+    Using.Manager { use =>
+      val conn = use(pool.getConnection)
+      val stmt = use(conn.createStatement)
+      queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+      op(use, stmt)
+    }
 
-  private def statementResource: ResourceFut[StatementWrapper[Future]] =
-    for {
-      conn <- connectionResource
-      stmt <- ResourceFut.make(conn.createStatement.map(s => statement(s, ec, queryTimeoutSeconds)))(_.close)
-    } yield stmt
+  private def withPreparedStatement[T](sql: String, params: Map[String, ParamVal])(
+      op: (Using.Manager, PreparedStatement) => T,
+  ): Try[T] =
+    Using.Manager { use =>
+      val conn            = use(pool.getConnection)
+      val interpolatedCtx = Interpolator.interpolate(sql)
+      val stmt            = use(conn.prepareStatement(interpolatedCtx.queryString))
+      queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+      stmt.setParams(interpolatedCtx, params)
+      op(use, stmt)
+    }
 
-  private def preparedStatementResource(
-      sql: String,
-      params: Map[String, ParamVal],
-  ): ResourceFut[PreparedStatementWrapper[Future]] =
-    for {
-      conn            <- connectionResource
-      interpolatedCtx <- ResourceFut.liftFuture(Future(Interpolator.interpolate(sql)))
-      stmt            <- ResourceFut.make(
-                           conn
-                             .prepareStatement(interpolatedCtx.queryString)
-                             .map(s => preparedStatement(s, ec, queryTimeoutSeconds)),
-                         )(_.close)
-      _               <- ResourceFut.liftFuture(stmt.setParams(interpolatedCtx, params))
-    } yield stmt
-
-  private def callableStatementResource(
+  private def withCallableStatement[T](
       sql: String,
       inParams: Map[String, ParamVal],
       outParams: Map[String, Int],
-  ): ResourceFut[CallableStatementWrapper[Future]] =
-    for {
-      conn            <- connectionResource
-      interpolatedCtx <- ResourceFut.liftFuture(Future(Interpolator.interpolate(sql)))
-      stmt            <- ResourceFut.make(
-                           conn
-                             .prepareCall(s"${interpolatedCtx.queryString}")
-                             .map(s => callableStatement(s, ec, queryTimeoutSeconds)),
-                         )(_.close)
-      _               <- ResourceFut.liftFuture(stmt.setParams(interpolatedCtx, inParams, outParams))
-    } yield stmt
-
-  private def withCompletion[T, U](fut: Future[T])(s: T => U, f: Throwable => U): Unit = fut.onComplete {
-    case Success(value)     => s(value)
-    case Failure(exception) => f(exception)
+  )(op: (Using.Manager, CallableStatement) => T): Try[T] = {
+    Using.Manager { use =>
+      val conn            = use(pool.getConnection())
+      val interpolatedCtx = Interpolator.interpolate(sql)
+      val stmt            = use(conn.prepareCall(s"${interpolatedCtx.queryString}"))
+      queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+      stmt.setParams(interpolatedCtx, inParams, outParams)
+      op(use, stmt)
+    }
   }
 
-  def executeRaw[U](sql: String)(s: Boolean => U, f: Throwable => U): Unit =
-    withCompletion(statementResource.use(_.execute(sql)))(s, f)
+  def executeRaw[U](sql: String)(consumer: Try[Boolean] => U): Future[U] = Future {
+    val result = withStatement { (_, stmt) =>
+      stmt.execute(sql)
+    }
+    consumer(result)
+  }
 
-  def executeSelect[U](sql: String, params: Seq[(String, ParamVal)])(s: List[Map[String, Any]] => U, f: Throwable => U): Unit =
-    withCompletion(preparedStatementResource(sql, params.toMap).use(_.executeQuery.map(_.iterator.toList)))(s, f)
+  def executeSelect[U](
+      sql: String,
+      params: Seq[(String, ParamVal)],
+  )(consumer: Try[List[Map[String, Any]]] => U): Future[U] = Future {
+    val result = withPreparedStatement(sql, params.toMap) { (use, stmt) =>
+      use(stmt.executeQuery).iterator.toList
+    }
+    consumer(result)
+  }
 
-  def executeUpdate[U](sqlQuery: String, params: Seq[(String, ParamVal)])(s: Int => U, f: Throwable => U): Unit =
-    withCompletion(preparedStatementResource(sqlQuery, params.toMap).use(_.executeUpdate))(s, f)
+  def executeUpdate[U](sql: String, params: Seq[(String, ParamVal)])(
+      consumer: Try[Int] => U,
+  ): Future[U] = Future {
+    val result = withPreparedStatement(sql, params.toMap) { (_, stmt) =>
+      stmt.executeUpdate
+    }
+    consumer(result)
+  }
 
   /** Execute a stored-procedure call and return the OUT parameter values surfaced by the database.
     *
-    * If no OUT parameters are declared the success callback receives an empty map. The update-count returned by `executeUpdate`
-    * is intentionally not surfaced because stored procedures do not reliably report it across drivers; callers that need row
+    * If no OUT parameters are declared, the result will be an empty map. The update-count returned by `executeUpdate` is
+    * intentionally not surfaced because stored procedures do not reliably report it across drivers; callers that need row
     * counts should use [[executeUpdate]] instead.
     *
     * @param sqlCall
@@ -124,71 +130,69 @@ class JDBCClient(pool: HikariDataSource, blockingPool: ExecutorService, queryTim
     *   IN parameter bindings
     * @param outParams
     *   OUT parameter declarations: name → java.sql.Types constant
-    * @param s
-    *   success callback receiving a map of OUT parameter name → value
-    * @param f
-    *   failure callback
+    * @param consumer
+    *   a callback that will be called synchronously on the same thread the SQL call ran on to receive the result
     */
   def call[U](sqlCall: String, params: Seq[(String, ParamVal)], outParams: Seq[(String, Int)])(
-      s: Map[String, Any] => U,
-      f: Throwable => U,
-  ): Unit = {
-    val result = callableStatementResource(sqlCall, params.toMap, outParams.toMap).use { stmt =>
-      stmt.executeUpdate.flatMap { _ =>
-        if (outParams.isEmpty) {
-          scala.concurrent.Future.successful(Map.empty[String, Any])
+      consumer: Try[Map[String, Any]] => U,
+  ): Future[U] = Future {
+    val result = withCallableStatement(sqlCall, params.toMap, outParams.toMap) { (_, stmt) =>
+      stmt.executeUpdate()
+      if (outParams.isEmpty) {
+        Map.empty[String, Any]
+      } else {
+        val interpolated     = Interpolator.interpolate(sqlCall)
+        // Collect only OUT-parameter name → index mappings from the interpolated index map
+        val outParamIndexes  = interpolated.m.filter { case (name, _) => outParams.exists(_._1 == name) }
+        val missingOutParams = outParams.map(_._1).filterNot(outParamIndexes.contains)
+        if (missingOutParams.nonEmpty) {
+          throw new IllegalArgumentException(
+            s"OUT parameter(s) not found in SQL placeholders: ${missingOutParams.mkString(", ")}",
+          )
         } else {
-          val interpolated     = Interpolator.interpolate(sqlCall)
-          // Collect only OUT-parameter name → index mappings from the interpolated index map
-          val outParamIndexes  = interpolated.m.filter { case (name, _) => outParams.exists(_._1 == name) }
-          val missingOutParams = outParams.map(_._1).filterNot(outParamIndexes.contains)
-          if (missingOutParams.nonEmpty) {
-            scala.concurrent.Future.failed(
-              new IllegalArgumentException(
-                s"OUT parameter(s) not found in SQL placeholders: ${missingOutParams.mkString(", ")}",
-              ),
-            )
-          } else {
-            stmt.getOutParams(outParamIndexes)
-          }
+          stmt.getOutParams(outParamIndexes)
         }
       }
     }
-    withCompletion(result)(s, f)
+    consumer(result)
   }
 
-  def batch[U](queries: Seq[SqlWithParam])(s: Array[Int] => U, f: Throwable => U): Unit =
-    withCompletion(
-      connectionForBatchResource.use { conn =>
-        queries
-          .groupBy(_.sql)
-          .toSeq
-          .foldLeft(Future.successful(Vector.empty[Int])) { case (accFut, (sql, group)) =>
-            accFut.flatMap { acc =>
-              val interpolated = Interpolator.interpolate(sql)
-              conn.prepareStatement(interpolated.queryString).flatMap { rawPs =>
-                val ps = preparedStatement(rawPs, ec)
-                group
-                  .foldLeft(Future.successful(())) { (prev, query) =>
-                    prev.flatMap(_ => ps.setParams(interpolated, query.params.toMap).flatMap(_ => ps.addBatch))
-                  }
-                  .flatMap(_ => ps.executeBatch)
-                  .transformWith(result => ps.close.flatMap(_ => Future.fromTry(result)))
-                  .map(counts => acc ++ counts)
+  def batch[U](queries: Seq[SqlWithParam])(consumer: Try[Array[Int]] => U): Future[U] = Future {
+    val result = withConnectionForBatch { (_, conn) =>
+      queries
+        .groupBy(_.sql)
+        .toSeq
+        .foldLeft[Try[Vector[Int]]](Success(Vector.empty)) { case (resultTry, (sql, group)) =>
+          resultTry.flatMap { resultCounts =>
+            val interpolated = Interpolator.interpolate(sql)
+            Using(conn.prepareStatement(interpolated.queryString)) { stmt =>
+              queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+              group.foreach { query =>
+                stmt.setParams(interpolated, query.params.toMap)
+                stmt.addBatch()
               }
-            }
+              stmt.executeBatch()
+            }.map { batchCounts => resultCounts ++ batchCounts }
           }
-          .map(_.toArray)
-          .transformWith {
-            case Success(result)    => conn.commit.map(_ => result)
-            case Failure(exception) => conn.rollback.flatMap(_ => Future.failed(exception))
-          }
-      },
-    )(s, f)
+        }
+        .map(_.toArray)
+        .transform(
+          result => Try(conn.commit()).map(_ => result),
+          exception => Try(conn.rollback()).flatMap(_ => Failure(exception)),
+        )
+    }.flatten
+    consumer(result)
+  }
 
   def close(): Unit = {
     pool.close()
     blockingPool.shutdown()
     blockingPool.awaitTermination(30, TimeUnit.SECONDS)
+  }
+
+  private class DisableAutoCommit(private val connection: Connection) extends AutoCloseable {
+    private val previousAutoCommit = connection.getAutoCommit
+    connection.setAutoCommit(false)
+    override def close(): Unit     = connection.setAutoCommit(previousAutoCommit)
   }
 }

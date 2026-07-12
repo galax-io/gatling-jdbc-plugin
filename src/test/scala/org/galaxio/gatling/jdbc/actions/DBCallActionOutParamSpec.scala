@@ -6,6 +6,7 @@ import io.gatling.core.actor.ActorSystem
 import io.gatling.core.config.GatlingConfiguration
 import io.gatling.core.session.Session
 import io.netty.channel.DefaultEventLoop
+import org.galaxio.gatling.jdbc.db
 import org.galaxio.gatling.jdbc.db.JDBCClient
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
@@ -14,6 +15,8 @@ import org.scalatest.matchers.should.Matchers
 import java.sql.Types
 import java.util.concurrent.Executors
 import scala.collection.immutable.Map
+import scala.concurrent.Future
+import scala.util.{Success, Try}
 
 /** Tests for stored procedure OUT parameter support (issue #28).
   *
@@ -51,14 +54,9 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val blockingPool = Executors.newFixedThreadPool(1)
 
     new JDBCClient(ds, blockingPool) {
-      override def call[U](
-          sqlCall: String,
-          params: Seq[(String, org.galaxio.gatling.jdbc.db.ParamVal)],
-          outParams: Seq[(String, Int)],
-      )(
-          s: Map[String, Any] => U,
-          f: Throwable => U,
-      ): Unit = s(outResults)
+      override def call[U](sqlCall: String, params: Seq[(String, db.ParamVal)], outParams: Seq[(String, Int)])(
+          consumer: Try[Map[String, Any]] => U,
+      ): Future[U] = Future.successful(consumer(Success(outResults)))
     }
   }
 
