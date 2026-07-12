@@ -1,5 +1,11 @@
 import Dependencies.*
 
+// sbt-git's default JGit reader throws NoWorkTreeException in linked git worktrees
+// (where `.git` is a file, not a directory), which breaks project loading there.
+// Shell out to the git CLI for read-only git ops so GitVersioning loads from
+// worktrees too. (sbt-git helper; sets ThisBuild / useConsoleForROGit := true.)
+useReadableConsoleGit
+
 lazy val root = (project in file("."))
   .enablePlugins(GitVersioning, GatlingPlugin)
   .settings(
