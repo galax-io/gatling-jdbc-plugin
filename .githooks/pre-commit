@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#
+# pre-commit — format Scala + sbt sources with scalafmt and re-stage the files
+# this commit touches, so the recorded snapshot is scalafmt-clean.
+#
+# Runs: sbt scalafmtAll scalafmtSbt   (compile + tests run in CI, not per commit,
+# so this hook stays fast and needs no Docker/Testcontainers).
+# Bypass: SKIP_SCALAFMT=1 git commit …   (or: git commit --no-verify)
+#
+# Shared via core.hooksPath (scripts/install-hooks.sh).
+set -euo pipefail
+
+if [ "${SKIP_SCALAFMT:-0}" = "1" ]; then
+  echo "pre-commit: SKIP_SCALAFMT=1 — skipping scalafmt." >&2
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Only the paths staged for THIS commit (Added/Copied/Modified).
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -n "$staged" ] || exit 0
+
+# -batch + closed stdin: a scalafmt/load failure exits non-zero instead of
+# dropping to sbt's interactive "(r)etry?" prompt and hanging the commit.
+echo "pre-commit: sbt scalafmtAll scalafmtSbt …" >&2
+sbt -batch scalafmtAll scalafmtSbt < /dev/null
+
+# Re-stage only the originally-staged paths that still exist after formatting,
+# so the commit records the formatted content (no unstaged reformat drift that
+# would later fail CI's scalafmtCheckAll).
+n=0
+while IFS= read -r f; do
+  [ -n "$f" ] && [ -e "$f" ] && { git add -- "$f"; n=$((n + 1)); }
+done <<< "$staged"
+
+echo "pre-commit: formatted; re-staged $n file(s)." >&2
