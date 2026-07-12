@@ -172,4 +172,53 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
         dataSource.getHikariPoolMXBean.getActiveConnections shouldBe 0
       }
   }
+
+  // Regression for issue #120: under concurrent load every multi-param insert must write
+  // exactly the values declared for it — no swapped or corrupted bindings between users.
+  it should "bind every parameter of concurrent multi-param inserts exactly to its declared value" in {
+    val n = 50
+
+    client
+      .executeRaw(
+        """CREATE TABLE IF NOT EXISTS conc_items (
+          |  id   INT PRIMARY KEY,
+          |  name VARCHAR(100),
+          |  flag BOOLEAN,
+          |  val  DOUBLE PRECISION
+          |)""".stripMargin,
+      ) { result =>
+        result.success.value shouldBe false
+      }
+      .flatMap { _ =>
+        Future.sequence {
+          (1 to n).map { i =>
+            client.executeUpdate(
+              "INSERT INTO conc_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})",
+              Seq(
+                "id"   -> IntParam(i),
+                "name" -> StrParam(s"row-$i"),
+                "flag" -> BooleanParam(i % 2 == 0),
+                "val"  -> DoubleParam(i * 1.5),
+              ),
+            ) { result =>
+              result.success.value shouldBe 1
+            }
+          }
+        }
+      }
+      .flatMap { _ =>
+        client.executeSelect("SELECT id, name, flag, val FROM conc_items", Seq.empty) { result =>
+          val rows = result.success.value
+          rows should have size n.toLong
+
+          rows.foreach { row =>
+            val id = row("id").asInstanceOf[Number].intValue()
+            row("name") shouldBe s"row-$id"
+            row("flag") shouldBe (id % 2 == 0)
+            row("val") shouldBe id * 1.5
+          }
+          succeed
+        }
+      }
+  }
 }
