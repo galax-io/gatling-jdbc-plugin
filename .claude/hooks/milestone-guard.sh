@@ -66,18 +66,12 @@ val=$(printf '%s' "$val" | sed -E 's/^["'"'"']//; s/["'"'"']$//')
 # Empty target = clearing the milestone; not a scatter.
 [ -n "$val" ] || exit 0
 
-# --- Resolve the current release milestone ------------------------------------
-REPO="${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)}"
-[ -n "$REPO" ] || block "cannot determine repo to verify milestone — set REPO=owner/name, or bypass with MILESTONE_GUARD_OFF=1"
-
-cur=$(gh api "repos/$REPO/milestones?state=open&per_page=100" --jq '
-  [ .[]
-    | select(.title | test("^v[0-9]+\\.[0-9]+\\.0"))
-    | . + { _k: ((.title | capture("^v(?<a>[0-9]+)\\.(?<b>[0-9]+)")) | (.a|tonumber) * 100000 + (.b|tonumber)) }
-  ]
-  | sort_by(._k) | .[0] // empty
-  | if . == "" then "" else "\(.number)\t\(.title)" end' 2>/dev/null || true)
-
+# --- Resolve the current release milestone (shared resolver) ------------------
+root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+resolver="$root/scripts/current-milestone.sh"
+[ -f "$resolver" ] || block "current-milestone resolver missing ($resolver) — cannot verify milestone; bypass with MILESTONE_GUARD_OFF=1"
+cur=$(bash "$resolver" 2>/dev/null) \
+  || block "cannot determine repo to verify milestone — set REPO=owner/name, or bypass with MILESTONE_GUARD_OFF=1"
 [ -n "$cur" ] || block "no open version milestone (vX.Y.0) to assign into — create the release milestone first, or bypass with MILESTONE_GUARD_OFF=1.
   target: $val"
 
