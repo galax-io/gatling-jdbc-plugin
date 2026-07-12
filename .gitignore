@@ -16,3 +16,11 @@
 /.bloop/
 /project/metals.sbt
 /project/.bloop/
+
+### Claude Code (keep settings.json + hooks tracked; ignore local/secret state)
+.claude/settings.local.json
+.claude/worktrees/
+
+### spec-kit
+speckit-install.log
+scratchpad-*.sh
