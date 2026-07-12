@@ -9,9 +9,10 @@ import org.scalatest.TryValues._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
+import java.sql.Types
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
-import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Failure
 
 /** Regression tests for issue #120: PreparedStatement parameter setters must never be launched concurrently.
@@ -23,6 +24,8 @@ import scala.util.Failure
   * actually received.
   */
 class StatementParamsConcurrencySpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+
+  private implicit val ec: ExecutionContext = ExecutionContext.global
 
   private var dataSource: HikariDataSource = _
   private var client: JDBCClient           = _
@@ -56,6 +59,24 @@ class StatementParamsConcurrencySpec extends AnyFlatSpec with Matchers with Befo
             |  a_val INT,
             |  b_val VARCHAR(255)
             |)""".stripMargin,
+        )
+      conn
+        .createStatement()
+        .execute(
+          """CREATE ALIAS IF NOT EXISTS ECHO_FN AS $$
+            |String echoFn(String s, long n) {
+            |    return s + ":" + n;
+            |}
+            |$$""".stripMargin,
+        )
+      conn
+        .createStatement()
+        .execute(
+          """CREATE ALIAS IF NOT EXISTS FORTY_TWO AS $$
+            |long fortyTwo() {
+            |    return 42L;
+            |}
+            |$$""".stripMargin,
         )
     } finally conn.close()
 
@@ -196,4 +217,86 @@ class StatementParamsConcurrencySpec extends AnyFlatSpec with Matchers with Befo
 
   // Client-level 50-user value-correctness for prepared statements lives in
   // PostgreSQLIntegrationSpec ("bind every parameter of concurrent multi-param inserts...").
+
+  // ─── issue #121: CallableStatement IN binding and OUT registration ─────────────
+
+  behavior of "CallableStatement IN/OUT registration (issue #121)"
+
+  it should "bind IN params and register the OUT param with no overlap, each position exactly once" in {
+    val sql  = "{res} = CALL ECHO_FN({s},{n})"
+    val ctx  = Interpolator.interpolate(sql)
+    val conn = dataSource.getConnection
+    try {
+      val (stmt, recorder) = RecordingStatementProxy.callable(conn.prepareCall(ctx.queryString))
+      stmt.setParams(ctx, Map("s" -> StrParam("abc"), "n" -> LongParam(7L)), Map("res" -> Types.VARCHAR))
+      stmt.executeUpdate()
+
+      recorder.maxConcurrentParamCalls shouldBe 1
+      recorder.registerCountsByIndex shouldBe Map(ctx.m("res").head -> 1)
+      recorder.setterCountsByIndex shouldBe Map(ctx.m("s").head -> 1, ctx.m("n").head -> 1)
+      recorder.boundValueAt(ctx.m("s").head) shouldBe "abc"
+
+      stmt.getString(ctx.m("res").head) shouldBe "abc:7"
+    } finally conn.close()
+  }
+
+  it should "hold the same invariants for a call with only IN parameters" in {
+    val sql  = "CALL ECHO_FN({s},{n})"
+    val ctx  = Interpolator.interpolate(sql)
+    val conn = dataSource.getConnection
+    try {
+      val (stmt, recorder) = RecordingStatementProxy.callable(conn.prepareCall(ctx.queryString))
+      stmt.setParams(ctx, Map("s" -> StrParam("solo"), "n" -> LongParam(1L)), Map.empty)
+      stmt.execute()
+
+      recorder.maxConcurrentParamCalls shouldBe 1
+      recorder.registerCountsByIndex shouldBe empty
+      recorder.setterCountsByIndex shouldBe Map(ctx.m("s").head -> 1, ctx.m("n").head -> 1)
+    } finally conn.close()
+  }
+
+  it should "hold the same invariants for a call with only an OUT parameter" in {
+    val sql  = "{res} = CALL FORTY_TWO()"
+    val ctx  = Interpolator.interpolate(sql)
+    val conn = dataSource.getConnection
+    try {
+      val (stmt, recorder) = RecordingStatementProxy.callable(conn.prepareCall(ctx.queryString))
+      stmt.setParams(ctx, Map.empty, Map("res" -> Types.BIGINT))
+      stmt.executeUpdate()
+
+      recorder.maxConcurrentParamCalls shouldBe 1
+      recorder.setterCountsByIndex shouldBe empty
+      recorder.registerCountsByIndex shouldBe Map(ctx.m("res").head -> 1)
+
+      stmt.getLong(ctx.m("res").head) shouldBe 42L
+    } finally conn.close()
+  }
+
+  it should "fail with IllegalArgumentException naming the OUT parameter missing from the SQL placeholders" in {
+    val future = client.call(
+      "CALL ECHO_FN({s},{n})", // {res} placeholder intentionally absent
+      Seq("s"   -> StrParam("x"), "n" -> LongParam(2L)),
+      Seq("res" -> Types.VARCHAR),
+    )(identity)
+
+    val result = Await.result(future, 10.seconds)
+    result shouldBe a[Failure[_]]
+    result.failure.exception shouldBe an[IllegalArgumentException]
+    result.failure.exception.getMessage should include("res")
+  }
+
+  it should "return correct OUT values for every call under concurrent load" in {
+    val n       = 50
+    val futures = (1 to n).map { i =>
+      client.call(
+        "{res} = CALL ECHO_FN({s},{n})",
+        Seq("s"   -> StrParam(s"in-$i"), "n" -> LongParam(i.toLong)),
+        Seq("res" -> Types.VARCHAR),
+      ) { result =>
+        result.success.value shouldBe Map("res" -> s"in-$i:$i")
+      }
+    }
+    Await.result(Future.sequence(futures), 30.seconds)
+    succeed
+  }
 }
