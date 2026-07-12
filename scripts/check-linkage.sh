@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 usage() {
   cat <<'EOF'
 check-linkage.sh — verify the issue <-> PR <-> milestone contract (see AGENTS.md "Milestones (ALWAYS)").
@@ -90,9 +92,11 @@ if [ -n "$FOR_TAG" ]; then
   TAG_MODE=1
 fi
 
-# Default to the lowest-numbered open milestone (the "active" one).
+# Default to the current release milestone (shared resolver = single source of truth).
 if [ -z "$MS" ]; then
-  MS=$(gh api "repos/$REPO/milestones?state=open&per_page=100" --jq 'sort_by(.number) | .[0].number // empty')
+  MS=$(REPO="$REPO" bash "$SCRIPT_DIR/current-milestone.sh" 2>/dev/null | cut -f1 || true)
+  # Fallback (no version milestone yet): lowest-numbered open, the legacy behaviour.
+  [ -n "$MS" ] || MS=$(gh api "repos/$REPO/milestones?state=open&per_page=100" --jq 'sort_by(.number) | .[0].number // empty')
   [ -n "$MS" ] || { echo "error: no open milestone found in $REPO" >&2; exit 2; }
 fi
 
