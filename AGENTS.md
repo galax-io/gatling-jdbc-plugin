@@ -91,6 +91,8 @@ Enforced by [`scripts/check-linkage.sh`](scripts/check-linkage.sh) + the [`.clau
 
 > The `--for-tag` gate maps `vX.Y.Z` to the milestone whose **title starts with `vX.Y.0`**. Name release milestones `vX.Y.0 <description>` for the gate to resolve; audit and `--pr` modes work with any milestone name.
 
+> **Thematic milestones hold backlog; release milestones hold what shipped.** Milestones `1 —`/`2 —`/`3 —` track *not-yet-done* work per theme. When a `vX.Y.Z` release ships, every issue/PR it actually closed **moves into that release's `vX.Y.0` milestone** — don't leave closed items sitting in the thematic one. A PR/issue carries exactly one milestone, so move both the PR and the issue(s) it closes together (`gh api repos/<org>/<repo>/issues/<N> -X PATCH -f milestone=<release-ms-number>`), then re-run `check-linkage.sh --pr <N>` to confirm the `Closes #<issue>` link still matches. Leave everything still open where it is. See [milestone #5](https://github.com/galax-io/gatling-jdbc-plugin/milestone/5) for the reference example.
+
 ## Commits & PRs
 
 - **Spec-first.** `specs/NNN-*/` artifacts land as a `docs(speckit): add NNN-<feature> spec/plan/tasks` commit BEFORE any `feat`/`fix`. Never fold spec artifacts into implementation commits.
