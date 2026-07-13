@@ -26,7 +26,9 @@ trim = true
 
 [git]
 conventional_commits = true
-filter_unconventional = true
+# false: a commit that fails strict Conventional Commits parsing still reaches commit_parsers
+# (caught by the trailing catch-all below) instead of being silently dropped from the notes.
+filter_unconventional = false
 split_commits = false
 # First match wins. Deps before the maintenance catch-all; breaking first.
 commit_parsers = [
@@ -38,6 +40,9 @@ commit_parsers = [
   { message = "^docs", group = "<!-- 04 -->Documentation" },
   { message = "^chore\\(deps\\)", group = "<!-- 05 -->Dependencies" },
   { message = "^(refactor|test|ci|build|chore|style|revert)", group = "<!-- 06 -->Maintenance" },
+  # Catch-all: a non-Conventional-Commit message still ships (e.g. an older or squash-merged commit)
+  # instead of silently vanishing from the notes.
+  { message = ".*", group = "<!-- 07 -->Other" },
 ]
 filter_commits = false
 tag_pattern = "v[0-9].*"
