@@ -8,5 +8,5 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/002-check-semantics-concurrency/plan.md
+at specs/004-review-followups/plan.md
 <!-- SPECKIT END -->
