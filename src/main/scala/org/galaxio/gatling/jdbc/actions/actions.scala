@@ -46,7 +46,9 @@ object actions {
       params: Seq[(String, Expression[Any])],
       checks: Seq[JdbcCheck] = Seq.empty,
   ) extends ActionBuilder {
-    def check(newChecks: JdbcCheck*): QueryActionBuilder = this.copy(checks = newChecks)
+
+    /** Appends `newChecks` to the already-declared checks (#79); checks execute in declaration order. */
+    def check(newChecks: JdbcCheck*): QueryActionBuilder = this.copy(checks = checks ++ newChecks)
 
     override def build(ctx: ScenarioContext, next: Action): Action = DBQueryAction(
       requestName,
