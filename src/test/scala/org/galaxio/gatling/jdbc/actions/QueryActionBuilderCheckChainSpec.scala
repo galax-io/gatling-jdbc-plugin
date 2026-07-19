@@ -52,6 +52,7 @@ class QueryActionBuilderCheckChainSpec extends AnyFlatSpec with Matchers with Jd
       val koResponses = stats.responses.filter(_.status == KO)
       koResponses should have size 1
       koResponses.head.responseCode shouldBe Some("Check ERROR")
+      koResponses.head.message.getOrElse("") should include("Jdbc check failed")
     } finally {
       tc.close()
     }
@@ -65,14 +66,18 @@ class QueryActionBuilderCheckChainSpec extends AnyFlatSpec with Matchers with Jd
     try {
       val passing     = simpleCheck(_.nonEmpty)
       val failingMid  = simpleCheck(_ => false)
-      val failingLast = simpleCheck(_ => false)
+      val passingLast = simpleCheck(_ => true)
 
-      val action = baseBuilder.check(passing).check(failingMid).check(failingLast).build(tc.ctx, capture)
+      // The last registered check must PASS: under a replace-instead-of-append regression only
+      // passingLast survives, no KO is reported, and this test fails without help from its siblings.
+      val action = baseBuilder.check(passing).check(failingMid).check(passingLast).build(tc.ctx, capture)
       action ! freshSession()
 
       capture.awaitCapture() shouldBe true
       capture.capturedSession.isFailed shouldBe true
-      stats.responses.filter(_.status == KO) should have size 1
+      val koResponses = stats.responses.filter(_.status == KO)
+      koResponses should have size 1
+      koResponses.head.responseCode shouldBe Some("Check ERROR")
     } finally {
       tc.close()
     }
