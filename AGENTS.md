@@ -89,7 +89,7 @@ Enforced by [`scripts/check-linkage.sh`](scripts/check-linkage.sh) + the [`.clau
 - `scripts/check-linkage.sh --for-tag vX.Y.Z` — gate a release: every milestone issue closed, every PR merged.
 - `scripts/check-linkage.sh` — audit the active milestone (lowest-numbered open).
 
-> The `--for-tag` gate maps `vX.Y.Z` to the milestone whose **title starts with `vX.Y.0`**. Name release milestones `vX.Y.0 <description>` for the gate to resolve; audit and `--pr` modes work with any milestone name.
+> The `--for-tag` gate resolves `vX.Y.Z` to a milestone whose title starts with that **exact** version first (a dedicated patch milestone, e.g. `v1.3.1 <description>`); if none exists it falls back to the milestone whose title starts with `vX.Y.0`. Name release milestones `vX.Y.0 <description>` (or `vX.Y.Z <description>` for a dedicated patch milestone) for the gate to resolve; audit and `--pr` modes work with any milestone name.
 
 ## Commits & PRs
 
@@ -127,7 +127,7 @@ Pushing a `vX.Y.Z` tag on `main` or a `release/*` branch:
 
 ### Milestone gate
 
-A release milestone is **tag-ready** only when every issue in it is closed and every PR merged. Because a release is now a deliberate local `git tag vX.Y.Z` / tag push, the [`linkage-guard`](.claude/hooks/linkage-guard.sh) hook actually gates it: it runs `check-linkage.sh --for-tag vX.Y.Z` and blocks the tag until the milestone passes. Name release milestones `vX.Y.0 …` so the gate resolves (see Milestones). To enforce the same gate server-side, add a `scripts/check-linkage.sh --for-tag "$GITHUB_REF_NAME"` step to `release.yml` once milestones are version-named.
+A release milestone is **tag-ready** only when every issue in it is closed and every PR merged. Because a release is now a deliberate local `git tag vX.Y.Z` / tag push, the [`linkage-guard`](.claude/hooks/linkage-guard.sh) hook actually gates it: it runs `check-linkage.sh --for-tag vX.Y.Z` and blocks the tag until the milestone passes. Name release milestones `vX.Y.0 …`, or `vX.Y.Z …` for a dedicated patch milestone, so the gate resolves (see Milestones). To enforce the same gate server-side, add a `scripts/check-linkage.sh --for-tag "$GITHUB_REF_NAME"` step to `release.yml` once milestones are version-named.
 
 ### Rules
 

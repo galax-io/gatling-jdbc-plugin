@@ -83,12 +83,20 @@ if [ -n "$PR_NUM" ]; then
 fi
 
 # Map a release version (vX.Y.Z) to its milestone, then assert tag-readiness on it.
-# Patch versions map to the vX.Y.0 milestone (e.g. v1.23.1 -> "v1.23.0 …").
+# An exact vX.Y.Z-titled milestone wins if one exists (a dedicated patch milestone,
+# e.g. "v1.3.1 — …"); otherwise fall back to the vX.Y.0 minor milestone (e.g.
+# v1.23.1 -> "v1.23.0 …"). Both matches are digit-boundary safe so "v1.3.1" cannot
+# accidentally match a title starting "v1.3.10".
 if [ -n "$FOR_TAG" ]; then
-  v="${FOR_TAG#v}"; minor="v${v%.*}.0"
+  v="${FOR_TAG#v}"; minor="${v%.*}.0"
   MS=$(gh api "repos/$REPO/milestones?state=all&per_page=100" \
-        | jq -r --arg t "$minor" 'map(select(.title | startswith($t))) | .[0].number // empty')
-  [ -n "$MS" ] || { echo "error: no milestone whose title starts with '$minor' for tag $FOR_TAG" >&2; exit 2; }
+        | jq -r --arg exact "$v" --arg minor "$minor" '
+            def boundary_match($ver): "^v" + ($ver | gsub("\\."; "\\.")) + "(\\D|$)";
+            (map(select(.title | test(boundary_match($exact)))) | .[0].number) as $e |
+            (map(select(.title | test(boundary_match($minor)))) | .[0].number) as $m |
+            if $e != null then $e elif $m != null then $m else empty end
+          ')
+  [ -n "$MS" ] || { echo "error: no milestone titled 'v$v …' or 'v$minor …' for tag $FOR_TAG" >&2; exit 2; }
   TAG_MODE=1
 fi
 
