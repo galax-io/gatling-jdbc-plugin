@@ -1,15 +1,10 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.{KO, OK}
+import io.gatling.commons.stats.KO
 import io.gatling.commons.validation.Success
 import io.gatling.core.action.Action
-import io.gatling.core.actor.ActorSystem
-import io.gatling.core.config.GatlingConfiguration
-import io.gatling.core.session.Session
 import io.gatling.core.session.el._
-import io.netty.channel.DefaultEventLoop
 import org.galaxio.gatling.jdbc.actions.actions.{BatchInsertAction, Columns}
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -21,35 +16,12 @@ import scala.collection.immutable.Map
   * Before the fix, `ActionBase.crashOnFailure` re-resolved the failing expression and silently no-opped, so `next` was never
   * called: each missing-attribute test below fails by `awaitCapture` timeout on the unfixed code.
   */
-class RequestNameCrashSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll with JdbcActionSpecSupport {
-
-  // ─── shared infrastructure ───────────────────────────────────────────────────
-
-  private val eventLoop                    = new DefaultEventLoop()
-  override val actorSystem                 = new ActorSystem()
-  private val config: GatlingConfiguration = GatlingConfiguration.loadForTest()
-
-  override protected def afterAll(): Unit = {
-    eventLoop.shutdownGracefully()
-    actorSystem.close()
-    super.afterAll()
-  }
-
-  private def freshSession(attributes: Map[String, Any] = Map.empty): Session =
-    Session(
-      scenario = "test",
-      userId = 1L,
-      attributes = attributes,
-      baseStatus = OK,
-      blockStack = Nil,
-      onExit = Session.NothingOnExit,
-      eventLoop = eventLoop,
-    )
+class RequestNameCrashSpec extends AnyFlatSpec with Matchers with JdbcActionSpecFixture {
 
   /** Runs `mkAction` against H2 with a recording stats engine and asserts the one-KO/one-next contract. */
   private def assertCrashContract(dbName: String)(mkAction: (TestContext, CaptureAction) => Action): Unit = {
     val stats   = new RecordingStatsEngine
-    val tc      = buildRealTestContext(s"jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1", 2, config, stats)
+    val tc      = buildRealTestContext(dbName, 2, config, stats)
     val capture = new CaptureAction()
 
     try {
@@ -129,12 +101,12 @@ class RequestNameCrashSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
     // ("42") and the action completes normally — the contract under test is one `next`
     // invocation and no hang, whatever the resolved outcome.
     val stats   = new RecordingStatsEngine
-    val tc      = buildRealTestContext("jdbc:h2:mem:crash_type_mismatch;DB_CLOSE_DELAY=-1", 2, config, stats)
+    val tc      = buildRealTestContext("crash_type_mismatch", 2, config, stats)
     val capture = new CaptureAction()
 
     try {
       val action = DBQueryAction("#{num}".el[String], _ => Success("SELECT 1"), Seq.empty, Seq.empty, capture, tc.ctx)
-      action ! freshSession(Map("num" -> 42))
+      action ! freshSession(attributes = Map("num" -> 42))
 
       capture.awaitCapture() shouldBe true
       capture.invocationCount shouldBe 1

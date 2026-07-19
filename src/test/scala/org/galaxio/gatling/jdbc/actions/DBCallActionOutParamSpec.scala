@@ -1,14 +1,8 @@
 package org.galaxio.gatling.jdbc.actions
 
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
-import io.gatling.commons.stats.OK
-import io.gatling.core.actor.ActorSystem
-import io.gatling.core.config.GatlingConfiguration
-import io.gatling.core.session.Session
-import io.netty.channel.DefaultEventLoop
 import org.galaxio.gatling.jdbc.db
 import org.galaxio.gatling.jdbc.db.JDBCClient
-import org.scalatest.BeforeAndAfterAll
+import org.galaxio.gatling.jdbc.db.testsupport.H2
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -25,19 +19,7 @@ import scala.util.{Success, Try}
   *
   * Additionally tests that JDBCClient.call now accepts a Map[String, Any] => U success callback (API-contract check).
   */
-class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll with JdbcActionSpecSupport {
-
-  // ─── shared infrastructure ───────────────────────────────────────────────────
-
-  private val eventLoop                    = new DefaultEventLoop()
-  override val actorSystem                 = new ActorSystem()
-  private val config: GatlingConfiguration = GatlingConfiguration.loadForTest()
-
-  override protected def afterAll(): Unit = {
-    eventLoop.shutdownGracefully()
-    actorSystem.close()
-    super.afterAll()
-  }
+class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with JdbcActionSpecFixture {
 
   // ─── Stub JDBCClient that bypasses JDBC entirely ─────────────────────────────
 
@@ -45,12 +27,7 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     * parameter values.
     */
   private def stubClientWith(outResults: Map[String, Any]): JDBCClient = {
-    val cfg          = new HikariConfig()
-    cfg.setJdbcUrl("jdbc:h2:mem:out_param_stub;DB_CLOSE_DELAY=-1")
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(1)
-    val ds           = new HikariDataSource(cfg)
+    val ds           = H2.dataSource("out_param_stub", 1)
     val blockingPool = Executors.newFixedThreadPool(1)
 
     new JDBCClient(ds, blockingPool) {
@@ -71,15 +48,7 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val capture    = new CaptureAction()
 
     try {
-      val session = Session(
-        scenario = "test",
-        userId = 1L,
-        attributes = Map.empty,
-        baseStatus = OK,
-        blockStack = Nil,
-        onExit = Session.NothingOnExit,
-        eventLoop = eventLoop,
-      )
+      val session = freshSession(userId = 1L)
 
       val action = DBCallAction(
         requestName = _ => io.gatling.commons.validation.Success("call-out-param-request"),
@@ -106,15 +75,7 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val capture = new CaptureAction()
 
     try {
-      val session = Session(
-        scenario = "test",
-        userId = 2L,
-        attributes = Map.empty,
-        baseStatus = OK,
-        blockStack = Nil,
-        onExit = Session.NothingOnExit,
-        eventLoop = eventLoop,
-      )
+      val session = freshSession(userId = 2L)
 
       val action = DBCallAction(
         requestName = _ => io.gatling.commons.validation.Success("call-no-out-params"),
@@ -141,15 +102,7 @@ class DBCallActionOutParamSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val capture    = new CaptureAction()
 
     try {
-      val session = Session(
-        scenario = "test",
-        userId = 3L,
-        attributes = Map("existingKey" -> "old-value"),
-        baseStatus = OK,
-        blockStack = Nil,
-        onExit = Session.NothingOnExit,
-        eventLoop = eventLoop,
-      )
+      val session = freshSession(userId = 3L, attributes = Map("existingKey" -> "old-value"))
 
       val action = DBCallAction(
         requestName = _ => io.gatling.commons.validation.Success("call-overwrite"),

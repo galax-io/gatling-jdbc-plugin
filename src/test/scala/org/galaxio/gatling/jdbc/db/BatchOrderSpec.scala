@@ -21,17 +21,8 @@ class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll 
   private var countingDs: PrepareCountingDataSource = _
   private var countingClient: JDBCClient            = _
 
-  private def h2Config(poolSize: Int): HikariConfig = {
-    val cfg = new HikariConfig()
-    cfg.setJdbcUrl("jdbc:h2:mem:batchorder;DB_CLOSE_DELAY=-1")
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(poolSize)
-    cfg
-  }
-
   override def beforeAll(): Unit = {
-    dataSource = new HikariDataSource(h2Config(4))
+    dataSource = testsupport.H2.dataSource("batchorder", 4)
 
     val conn = dataSource.getConnection
     try
@@ -47,7 +38,7 @@ class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll 
 
     client = JDBCClient(dataSource, Executors.newFixedThreadPool(4))
 
-    countingDs = new PrepareCountingDataSource(h2Config(2))
+    countingDs = new PrepareCountingDataSource(testsupport.H2.config("batchorder", 2))
     countingClient = JDBCClient(countingDs, Executors.newFixedThreadPool(2))
   }
 

@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+import org.galaxio.gatling.jdbc.db.testsupport.H2
 import org.galaxio.gatling.jdbc.db.{IntParam, JDBCClient, SqlWithParam, StrParam}
 import org.scalatest.flatspec.AsyncFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -22,12 +22,7 @@ import scala.concurrent.Future
 class JDBCClientFailureSpec extends AsyncFlatSpec with Matchers {
 
   private def withClient[T](f: JDBCClient => Future[T]): Future[T] = {
-    val cfg          = new HikariConfig()
-    cfg.setJdbcUrl("jdbc:h2:mem:jdbc_failure_test;DB_CLOSE_DELAY=-1")
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(4)
-    val ds           = new HikariDataSource(cfg)
+    val ds           = H2.dataSource("jdbc_failure_test", 4)
     val blockingPool = Executors.newFixedThreadPool(4)
     val client       = JDBCClient(ds, blockingPool)
 
