@@ -69,15 +69,18 @@ class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll 
     // Declared order: insert id=1 -> update ALL rows -> insert id=2 (same INSERT sql as the first).
     // groupBy(_.sql) merges both inserts into one group, so id=2 is either inserted before the
     // update (and wrongly updated) or id=1's insert is delayed past it — final state differs either way.
-    val queries = Seq(
+    val queries        = Seq(
       SQL(insertSql).withParamsMap(Map("id" -> 1, "val" -> "a")),
       SQL(updateSql).withParamsMap(Map.empty),
       SQL(insertSql).withParamsMap(Map("id" -> 2, "val" -> "b")),
     )
-    client.batch(queries) { result =>
+    val preparesBefore = countingDs.prepareCount
+    countingClient.batch(queries) { result =>
       result.success.value shouldBe Array(1, 1, 1)
       fetchVal(1) shouldBe "updated"
       fetchVal(2) shouldBe "b"
+      // README "Batch Operations": interleaved A,B,A runs as three groups, never two.
+      countingDs.prepareCount - preparesBefore shouldBe 3
     }
   }
 
@@ -115,15 +118,16 @@ class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll 
     clearTable()
     // 3 contiguous identical inserts + 1 update = 2 runs -> exactly 2 prepareStatement calls;
     // an implementation preparing per-statement would show 4.
-    val queries = Seq(
+    val queries        = Seq(
       SQL(insertSql).withParamsMap(Map("id" -> 31, "val" -> "a")),
       SQL(insertSql).withParamsMap(Map("id" -> 32, "val" -> "b")),
       SQL(insertSql).withParamsMap(Map("id" -> 33, "val" -> "c")),
       SQL(updateSql).withParamsMap(Map.empty),
     )
+    val preparesBefore = countingDs.prepareCount
     countingClient.batch(queries) { result =>
       result.success.value shouldBe Array(1, 1, 1, 3)
-      countingDs.prepareCount shouldBe 2
+      countingDs.prepareCount - preparesBefore shouldBe 2
     }
   }
 }

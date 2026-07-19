@@ -330,6 +330,18 @@ jdbc("batch insert").batch(
 )
 ```
 
+**Execution order and grouping** (since 1.3.0):
+
+- Operations execute in the order you declare them — the plugin never reorders a batch.
+- Operations with identical SQL text share one execution group (a single prepared statement)
+  only when they are **adjacent** in the batch.
+- Interleaving identical statements therefore produces more execution groups than grouping
+  them adjacently: `A, B, A` runs as three groups, while `A, A, B` runs as two. If you want
+  fewer groups and your scenario allows it, place operations with the same SQL next to each
+  other.
+- Grouping does not change transactional behavior: the whole batch still commits together or
+  rolls back together.
+
 ### Stored Procedures
 
 Call stored procedures with IN and optional OUT parameters:
