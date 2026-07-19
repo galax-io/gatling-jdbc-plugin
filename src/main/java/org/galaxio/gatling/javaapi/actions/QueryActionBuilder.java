@@ -5,7 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 
 public class QueryActionBuilder implements ActionBuilder {
-    private org.galaxio.gatling.jdbc.actions.actions.QueryActionBuilder wrapped;
+    private final org.galaxio.gatling.jdbc.actions.actions.QueryActionBuilder wrapped;
 
     public QueryActionBuilder(org.galaxio.gatling.jdbc.actions.actions.QueryActionBuilder wrapped){
         this.wrapped = wrapped;
@@ -15,9 +15,9 @@ public class QueryActionBuilder implements ActionBuilder {
         return check(Arrays.asList(checks));
     }
 
+    /** Returns a new builder; the receiver (and any other branch derived from it) stays unmodified (#80). */
     public QueryActionBuilder check(List<Object> checks) {
-        this.wrapped = wrapped.check(org.galaxio.gatling.jdbc.internal.JdbcCheck.toScalaChecks(checks));
-        return this;
+        return new QueryActionBuilder(wrapped.check(org.galaxio.gatling.jdbc.internal.JdbcCheck.toScalaChecks(checks)));
     }
 
     @Override
