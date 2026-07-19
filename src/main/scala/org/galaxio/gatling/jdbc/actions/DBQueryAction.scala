@@ -12,6 +12,7 @@ import org.galaxio.gatling.jdbc.db.SQL
 import org.galaxio.gatling.jdbc.JdbcCheck
 
 import java.util.{HashMap => JHashMap}
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 case class DBQueryAction(
@@ -34,21 +35,37 @@ case class DBQueryAction(
       startTime       = now
     } yield dbClient.executeSelect(parametrisedSql.sql, parametrisedSql.params) {
       case Success(result)    =>
-        val received                 = now
-        val (newSession, checkError) = Check.check(result, session, checks.toList, new JHashMap[Any, Any]())
-        checkError match {
-          case Some(validation.Failure(errorMessage)) =>
+        val received = now
+        // A user check that throws would otherwise escape into the Future and never reach next (#78),
+        // so route it through the same KO path as a regular check failure.
+        try {
+          val (newSession, checkError) = Check.check(result, session, checks.toList, new JHashMap[Any, Any]())
+          checkError match {
+            case Some(validation.Failure(errorMessage)) =>
+              executeNext(
+                newSession.markAsFailed,
+                startTime,
+                received,
+                KO,
+                next,
+                resolvedName,
+                Some("Check ERROR"),
+                Some(errorMessage),
+              )
+            case _                                      => executeNext(newSession, startTime, received, OK, next, resolvedName, None, None)
+          }
+        } catch {
+          case NonFatal(e) =>
             executeNext(
-              newSession.markAsFailed,
+              session.markAsFailed,
               startTime,
               received,
               KO,
               next,
               resolvedName,
               Some("Check ERROR"),
-              Some(errorMessage),
+              Some(e.getMessage),
             )
-          case _                                      => executeNext(newSession, startTime, received, OK, next, resolvedName, None, None)
         }
       case Failure(exception) => reportError(session, startTime, resolvedName, exception)
     })
