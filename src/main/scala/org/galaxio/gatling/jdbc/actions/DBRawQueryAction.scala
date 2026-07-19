@@ -12,7 +12,7 @@ import scala.util.{Failure, Success}
 
 case class DBRawQueryAction(requestName: Expression[String], query: Expression[String], ctx: ScenarioContext, next: Action)
     extends ChainableAction with NameGen with ActionBase {
-  override def name: String = genName("jdbcInsertAction")
+  override val name: String = genName("jdbcRawQueryAction")
 
   override def execute(session: Session): Unit =
     (for {

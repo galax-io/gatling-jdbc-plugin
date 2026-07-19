@@ -8,6 +8,7 @@ import io.gatling.core.actor.ActorSystem
 import io.gatling.core.config.GatlingConfiguration
 import io.gatling.core.protocol.{Protocol, ProtocolComponents, ProtocolKey}
 import io.gatling.core.session.Session
+import io.gatling.core.stats.StatsEngine
 import io.gatling.core.structure.ScenarioContext
 import io.netty.channel.{EventLoopGroup, nio}
 import org.galaxio.gatling.jdbc.db.JDBCClient
@@ -41,14 +42,27 @@ trait JdbcActionSpecSupport {
   protected class CaptureAction extends Action {
     @volatile var capturedSession: Session = _
     private val latch                      = new CountDownLatch(1)
+    private val invocations                = new java.util.concurrent.atomic.AtomicInteger(0)
 
     override def name: String                    = "capture"
-    override def execute(session: Session): Unit = { capturedSession = session; latch.countDown() }
+    override def execute(session: Session): Unit = {
+      capturedSession = session
+      invocations.incrementAndGet()
+      latch.countDown()
+    }
 
     def awaitCapture(timeoutSeconds: Int = 5): Boolean = latch.await(timeoutSeconds.toLong, TimeUnit.SECONDS)
+    def invocationCount: Int                           = invocations.get()
   }
 
-  protected def buildTestContextWithClient(client: JDBCClient, config: GatlingConfiguration): TestContext = {
+  /** StatsEngine that records logResponse / logRequestCrash calls so specs can assert on emitted stats. */
+  protected type RecordingStatsEngine = GatlingTestSupport.RecordingStatsEngine
+
+  protected def buildTestContextWithClient(
+      client: JDBCClient,
+      config: GatlingConfiguration,
+      statsEngine: StatsEngine = GatlingTestSupport.noOpStatsEngine,
+  ): TestContext = {
     val jdbcComponents = JdbcComponents(client)
     val fakeProtocol   = new JdbcProtocol(new HikariConfig(), 1)
 
@@ -68,12 +82,18 @@ trait JdbcActionSpecSupport {
       config,
       factoryCache,
       protocols,
+      statsEngine,
     )
 
     TestContext(client, scenarioCtx, elg)
   }
 
-  protected def buildRealTestContext(jdbcUrl: String, poolSize: Int, config: GatlingConfiguration): TestContext = {
+  protected def buildRealTestContext(
+      jdbcUrl: String,
+      poolSize: Int,
+      config: GatlingConfiguration,
+      statsEngine: StatsEngine = GatlingTestSupport.noOpStatsEngine,
+  ): TestContext = {
     val cfg = new HikariConfig()
     cfg.setJdbcUrl(jdbcUrl)
     cfg.setUsername("sa")
@@ -83,6 +103,6 @@ trait JdbcActionSpecSupport {
     val ds           = new HikariDataSource(cfg)
     val blockingPool = Executors.newFixedThreadPool(poolSize)
     val client       = JDBCClient(ds, blockingPool)
-    buildTestContextWithClient(client, config)
+    buildTestContextWithClient(client, config, statsEngine)
   }
 }

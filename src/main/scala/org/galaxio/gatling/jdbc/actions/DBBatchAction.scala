@@ -24,7 +24,7 @@ final case class DBBatchAction(
       seq.foldRight(Seq.empty[S].success)((i, r) => r.flatMap(s => f(i).map(s.prepended)))
   }
 
-  override def name: String = genName("jdbcBatchAction")
+  override val name: String = genName("jdbcBatchAction")
 
   private def resolveBatchAction(session: Session): PartialFunction[BatchAction, Validation[SqlWithParam]] = {
 
