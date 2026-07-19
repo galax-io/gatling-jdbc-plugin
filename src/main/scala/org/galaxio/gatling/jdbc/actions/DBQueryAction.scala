@@ -35,37 +35,28 @@ case class DBQueryAction(
       startTime       = now
     } yield dbClient.executeSelect(parametrisedSql.sql, parametrisedSql.params) {
       case Success(result)    =>
-        val received = now
+        val received                                                 = now
+        def failCheck(failedSession: Session, message: String): Unit =
+          executeNext(
+            failedSession.markAsFailed,
+            startTime,
+            received,
+            KO,
+            next,
+            resolvedName,
+            Some("Check ERROR"),
+            Some(message),
+          )
         // A user check that throws would otherwise escape into the Future and never reach next (#78),
         // so route it through the same KO path as a regular check failure.
         try {
           val (newSession, checkError) = Check.check(result, session, checks.toList, new JHashMap[Any, Any]())
           checkError match {
-            case Some(validation.Failure(errorMessage)) =>
-              executeNext(
-                newSession.markAsFailed,
-                startTime,
-                received,
-                KO,
-                next,
-                resolvedName,
-                Some("Check ERROR"),
-                Some(errorMessage),
-              )
+            case Some(validation.Failure(errorMessage)) => failCheck(newSession, errorMessage)
             case _                                      => executeNext(newSession, startTime, received, OK, next, resolvedName, None, None)
           }
         } catch {
-          case NonFatal(e) =>
-            executeNext(
-              session.markAsFailed,
-              startTime,
-              received,
-              KO,
-              next,
-              resolvedName,
-              Some("Check ERROR"),
-              Some(e.getMessage),
-            )
+          case NonFatal(e) => failCheck(session, e.getMessage)
         }
       case Failure(exception) => reportError(session, startTime, resolvedName, exception)
     })
