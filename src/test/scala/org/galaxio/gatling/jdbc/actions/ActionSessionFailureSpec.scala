@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.OK
+import io.gatling.commons.stats.{KO, OK}
 import io.gatling.core.actor.ActorSystem
 import io.gatling.core.config.GatlingConfiguration
 import io.gatling.core.session.Session
@@ -33,13 +33,14 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
 
   // ─── test context builder ────────────────────────────────────────────────────
 
-  private def buildTestContext(): TestContext =
-    buildRealTestContext("jdbc:h2:mem:action_failure_test;DB_CLOSE_DELAY=-1", 2, config)
+  private def buildTestContext(statsEngine: io.gatling.core.stats.StatsEngine): TestContext =
+    buildRealTestContext("jdbc:h2:mem:action_failure_test;DB_CLOSE_DELAY=-1", 2, config, statsEngine)
 
   // ─── tests ───────────────────────────────────────────────────────────────────
 
   "DBRawQueryAction" should "forward a failed session to next when SQL is invalid" in {
-    val tc      = buildTestContext()
+    val stats   = new RecordingStatsEngine
+    val tc      = buildTestContext(stats)
     val capture = new CaptureAction()
 
     try {
@@ -64,13 +65,16 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
 
       capture.awaitCapture() shouldBe true
       capture.capturedSession.isFailed shouldBe true
+      capture.invocationCount shouldBe 1
+      stats.responses.filter(_.status == KO) should have size 1
     } finally {
       tc.close()
     }
   }
 
   "DBInsertAction" should "forward a failed session to next when the target table does not exist" in {
-    val tc      = buildTestContext()
+    val stats   = new RecordingStatsEngine
+    val tc      = buildTestContext(stats)
     val capture = new CaptureAction()
 
     try {
@@ -97,6 +101,8 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
 
       capture.awaitCapture() shouldBe true
       capture.capturedSession.isFailed shouldBe true
+      capture.invocationCount shouldBe 1
+      stats.responses.filter(_.status == KO) should have size 1
     } finally {
       tc.close()
     }

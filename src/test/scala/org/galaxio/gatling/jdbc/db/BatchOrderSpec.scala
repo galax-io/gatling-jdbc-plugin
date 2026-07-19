@@ -16,16 +16,22 @@ import java.util.concurrent.Executors
   */
 class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll {
 
-  private var dataSource: HikariDataSource = _
-  private var client: JDBCClient           = _
+  private var dataSource: HikariDataSource          = _
+  private var client: JDBCClient                    = _
+  private var countingDs: PrepareCountingDataSource = _
+  private var countingClient: JDBCClient            = _
 
-  override def beforeAll(): Unit = {
+  private def h2Config(poolSize: Int): HikariConfig = {
     val cfg = new HikariConfig()
     cfg.setJdbcUrl("jdbc:h2:mem:batchorder;DB_CLOSE_DELAY=-1")
     cfg.setUsername("sa")
     cfg.setPassword("")
-    cfg.setMaximumPoolSize(4)
-    dataSource = new HikariDataSource(cfg)
+    cfg.setMaximumPoolSize(poolSize)
+    cfg
+  }
+
+  override def beforeAll(): Unit = {
+    dataSource = new HikariDataSource(h2Config(4))
 
     val conn = dataSource.getConnection
     try
@@ -40,10 +46,15 @@ class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll 
     finally conn.close()
 
     client = JDBCClient(dataSource, Executors.newFixedThreadPool(4))
+
+    countingDs = new PrepareCountingDataSource(h2Config(2))
+    countingClient = JDBCClient(countingDs, Executors.newFixedThreadPool(2))
   }
 
-  override def afterAll(): Unit =
+  override def afterAll(): Unit = {
     client.close()
+    countingClient.close()
+  }
 
   private def clearTable(): Unit = {
     val conn = dataSource.getConnection
@@ -107,5 +118,43 @@ class BatchOrderSpec extends AsyncFlatSpec with Matchers with BeforeAndAfterAll 
       fetchVal(22) shouldBe "b"
       fetchVal(23) shouldBe "c"
     }
+  }
+
+  it should "share one PreparedStatement per contiguous run (efficiency half of the ordering contract)" in {
+    clearTable()
+    // 3 contiguous identical inserts + 1 update = 2 runs -> exactly 2 prepareStatement calls;
+    // an implementation preparing per-statement would show 4.
+    val queries = Seq(
+      SQL(insertSql).withParamsMap(Map("id" -> 31, "val" -> "a")),
+      SQL(insertSql).withParamsMap(Map("id" -> 32, "val" -> "b")),
+      SQL(insertSql).withParamsMap(Map("id" -> 33, "val" -> "c")),
+      SQL(updateSql).withParamsMap(Map.empty),
+    )
+    countingClient.batch(queries) { result =>
+      result.success.value shouldBe Array(1, 1, 1, 3)
+      countingDs.prepareCount shouldBe 2
+    }
+  }
+}
+
+/** Test-only HikariDataSource whose connections count `prepareStatement` invocations (FR-007 efficiency assert). */
+final class PrepareCountingDataSource(cfg: HikariConfig) extends HikariDataSource(cfg) {
+  private val prepares = new java.util.concurrent.atomic.AtomicInteger(0)
+
+  def prepareCount: Int = prepares.get()
+
+  override def getConnection: java.sql.Connection = {
+    val real = super.getConnection
+    java.lang.reflect.Proxy
+      .newProxyInstance(
+        classOf[java.sql.Connection].getClassLoader,
+        Array(classOf[java.sql.Connection]),
+        (_: AnyRef, method: java.lang.reflect.Method, args: Array[AnyRef]) => {
+          if (method.getName == "prepareStatement") prepares.incrementAndGet()
+          try method.invoke(real, args: _*)
+          catch { case e: java.lang.reflect.InvocationTargetException => throw e.getCause }
+        },
+      )
+      .asInstanceOf[java.sql.Connection]
   }
 }
