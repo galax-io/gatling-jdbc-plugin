@@ -2,16 +2,9 @@ package org.galaxio.gatling.jdbc.actions
 
 import io.gatling.commons.stats.{KO, OK}
 import io.gatling.commons.validation.Success
-import io.gatling.core.actor.ActorSystem
-import io.gatling.core.config.GatlingConfiguration
-import io.gatling.core.session.Session
-import io.netty.channel.DefaultEventLoop
 import org.galaxio.gatling.jdbc.check.JdbcCheckSupport
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import scala.collection.immutable.Map
 
 /** Regression test for issue #78: a user-supplied check predicate that throws after a successful query must produce one KO
   * through the normal check-failure path, a failed session, and exactly one `next` invocation — never a hung virtual user.
@@ -19,33 +12,11 @@ import scala.collection.immutable.Map
   * Before the fix, the exception escaped the executeSelect consumer into the Future's failure channel: no KO, no stats entry,
   * no `next` — this test fails by `awaitCapture` timeout on the unfixed code.
   */
-class ThrowingCheckSpec
-    extends AnyFlatSpec with Matchers with BeforeAndAfterAll with JdbcActionSpecSupport with JdbcCheckSupport {
-
-  private val eventLoop                    = new DefaultEventLoop()
-  override val actorSystem                 = new ActorSystem()
-  private val config: GatlingConfiguration = GatlingConfiguration.loadForTest()
-
-  override protected def afterAll(): Unit = {
-    eventLoop.shutdownGracefully()
-    actorSystem.close()
-    super.afterAll()
-  }
-
-  private def freshSession: Session =
-    Session(
-      scenario = "test",
-      userId = 1L,
-      attributes = Map.empty,
-      baseStatus = OK,
-      blockStack = Nil,
-      onExit = Session.NothingOnExit,
-      eventLoop = eventLoop,
-    )
+class ThrowingCheckSpec extends AnyFlatSpec with Matchers with JdbcActionSpecFixture with JdbcCheckSupport {
 
   "DBQueryAction" should "report one KO and call next once when a check predicate throws" in {
     val stats   = new RecordingStatsEngine
-    val tc      = buildRealTestContext("jdbc:h2:mem:throwing_check;DB_CLOSE_DELAY=-1", 2, config, stats)
+    val tc      = buildRealTestContext("throwing_check", 2, config, stats)
     val capture = new CaptureAction()
 
     try {
@@ -60,7 +31,7 @@ class ThrowingCheckSpec
         ctx = tc.ctx,
       )
 
-      action ! freshSession
+      action ! freshSession()
 
       withClue("next must be invoked despite the throwing check: ") {
         capture.awaitCapture() shouldBe true
@@ -82,7 +53,7 @@ class ThrowingCheckSpec
 
   it should "still report OK when checks pass after the guard is in place" in {
     val stats   = new RecordingStatsEngine
-    val tc      = buildRealTestContext("jdbc:h2:mem:passing_check;DB_CLOSE_DELAY=-1", 2, config, stats)
+    val tc      = buildRealTestContext("passing_check", 2, config, stats)
     val capture = new CaptureAction()
 
     try {
@@ -95,7 +66,7 @@ class ThrowingCheckSpec
         ctx = tc.ctx,
       )
 
-      action ! freshSession
+      action ! freshSession()
 
       capture.awaitCapture() shouldBe true
       capture.capturedSession.isFailed shouldBe false

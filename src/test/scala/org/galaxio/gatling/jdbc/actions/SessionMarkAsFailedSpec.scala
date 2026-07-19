@@ -1,8 +1,5 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.OK
-import io.gatling.core.session.Session
-import io.netty.channel.DefaultEventLoop
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -12,20 +9,7 @@ import org.scalatest.matchers.should.Matchers
   * session.markAsFailed before forwarding the session to executeNext when a JDBC operation returns KO. These tests document and
   * protect that contract at the Session level.
   */
-class SessionMarkAsFailedSpec extends AnyFlatSpec with Matchers {
-
-  private val eventLoop = new DefaultEventLoop()
-
-  private def freshSession(): Session =
-    Session(
-      scenario = "test-scenario",
-      userId = 1L,
-      attributes = Map.empty,
-      baseStatus = OK,
-      blockStack = Nil,
-      onExit = Session.NothingOnExit,
-      eventLoop = eventLoop,
-    )
+class SessionMarkAsFailedSpec extends AnyFlatSpec with Matchers with SessionFixture {
 
   "Session.markAsFailed" should "set isFailed to true on a fresh (OK) session" in {
     val session = freshSession()

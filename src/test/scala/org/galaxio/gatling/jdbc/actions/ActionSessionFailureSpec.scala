@@ -1,11 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import io.gatling.commons.stats.{KO, OK}
-import io.gatling.core.actor.ActorSystem
-import io.gatling.core.config.GatlingConfiguration
-import io.gatling.core.session.Session
-import io.netty.channel.DefaultEventLoop
-import org.scalatest.BeforeAndAfterAll
+import io.gatling.commons.stats.KO
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -17,24 +12,12 @@ import scala.collection.immutable.Map
   * forwarded to executeNext via a stub Action, and asserts session.isFailed == true. Removing `.markAsFailed` from the error
   * path in any JDBC action causes this test to fail.
   */
-class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll with JdbcActionSpecSupport {
-
-  // ─── shared infrastructure ───────────────────────────────────────────────────
-
-  private val eventLoop                    = new DefaultEventLoop()
-  override val actorSystem                 = new ActorSystem()
-  private val config: GatlingConfiguration = GatlingConfiguration.loadForTest()
-
-  override protected def afterAll(): Unit = {
-    eventLoop.shutdownGracefully()
-    actorSystem.close()
-    super.afterAll()
-  }
+class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with JdbcActionSpecFixture {
 
   // ─── test context builder ────────────────────────────────────────────────────
 
   private def buildTestContext(statsEngine: io.gatling.core.stats.StatsEngine): TestContext =
-    buildRealTestContext("jdbc:h2:mem:action_failure_test;DB_CLOSE_DELAY=-1", 2, config, statsEngine)
+    buildRealTestContext("action_failure_test", 2, config, statsEngine)
 
   // ─── tests ───────────────────────────────────────────────────────────────────
 
@@ -44,15 +27,7 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val capture = new CaptureAction()
 
     try {
-      val session = Session(
-        scenario = "test",
-        userId = 1L,
-        attributes = Map.empty,
-        baseStatus = OK,
-        blockStack = Nil,
-        onExit = Session.NothingOnExit,
-        eventLoop = eventLoop,
-      )
+      val session = freshSession()
 
       val action = DBRawQueryAction(
         requestName = _ => io.gatling.commons.validation.Success("bad-sql-request"),
@@ -78,15 +53,7 @@ class ActionSessionFailureSpec extends AnyFlatSpec with Matchers with BeforeAndA
     val capture = new CaptureAction()
 
     try {
-      val session = Session(
-        scenario = "test",
-        userId = 2L,
-        attributes = Map("col" -> "value"),
-        baseStatus = OK,
-        blockStack = Nil,
-        onExit = Session.NothingOnExit,
-        eventLoop = eventLoop,
-      )
+      val session = freshSession(userId = 2L, attributes = Map("col" -> "value"))
 
       val action = DBInsertAction(
         requestName = _ => io.gatling.commons.validation.Success("insert-request"),

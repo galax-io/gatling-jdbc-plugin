@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.db
 
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+import com.zaxxer.hikari.HikariDataSource
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AsyncFlatSpec
@@ -19,12 +19,7 @@ class BatchPreparedStatementSpec extends AsyncFlatSpec with Matchers with Before
   private var client: JDBCClient           = _
 
   override def beforeAll(): Unit = {
-    val cfg = new HikariConfig()
-    cfg.setJdbcUrl("jdbc:h2:mem:batchtest;DB_CLOSE_DELAY=-1")
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(4)
-    dataSource = new HikariDataSource(cfg)
+    dataSource = testsupport.H2.dataSource("batchtest", 4)
 
     val conn = dataSource.getConnection
     try {

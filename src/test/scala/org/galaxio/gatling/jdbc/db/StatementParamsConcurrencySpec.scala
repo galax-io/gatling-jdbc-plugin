@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.db
 
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+import com.zaxxer.hikari.HikariDataSource
 import org.galaxio.gatling.jdbc.db.JDBCClient.Interpolator
 import org.galaxio.gatling.jdbc.db.statements._
 import org.galaxio.gatling.jdbc.db.testsupport.RecordingStatementProxy
@@ -31,12 +31,7 @@ class StatementParamsConcurrencySpec extends AnyFlatSpec with Matchers with Befo
   private var client: JDBCClient           = _
 
   override def beforeAll(): Unit = {
-    val cfg = new HikariConfig()
-    cfg.setJdbcUrl("jdbc:h2:mem:param_concurrency_test;DB_CLOSE_DELAY=-1")
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(4)
-    dataSource = new HikariDataSource(cfg)
+    dataSource = testsupport.H2.dataSource("param_concurrency_test", 4)
 
     val conn = dataSource.getConnection
     try {

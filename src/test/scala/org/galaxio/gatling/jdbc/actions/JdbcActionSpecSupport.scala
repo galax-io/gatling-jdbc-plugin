@@ -1,6 +1,6 @@
 package org.galaxio.gatling.jdbc.actions
 
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+import com.zaxxer.hikari.HikariConfig
 import io.gatling.commons.util.Clock
 import io.gatling.core.GatlingTestSupport
 import io.gatling.core.action.Action
@@ -12,6 +12,7 @@ import io.gatling.core.stats.StatsEngine
 import io.gatling.core.structure.ScenarioContext
 import io.netty.channel.{EventLoopGroup, nio}
 import org.galaxio.gatling.jdbc.db.JDBCClient
+import org.galaxio.gatling.jdbc.db.testsupport.H2
 import org.galaxio.gatling.jdbc.protocol.{JdbcComponents, JdbcProtocol}
 
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
@@ -89,18 +90,12 @@ trait JdbcActionSpecSupport {
   }
 
   protected def buildRealTestContext(
-      jdbcUrl: String,
+      dbName: String,
       poolSize: Int,
       config: GatlingConfiguration,
       statsEngine: StatsEngine = GatlingTestSupport.noOpStatsEngine,
   ): TestContext = {
-    val cfg = new HikariConfig()
-    cfg.setJdbcUrl(jdbcUrl)
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(poolSize)
-
-    val ds           = new HikariDataSource(cfg)
+    val ds           = H2.dataSource(dbName, poolSize)
     val blockingPool = Executors.newFixedThreadPool(poolSize)
     val client       = JDBCClient(ds, blockingPool)
     buildTestContextWithClient(client, config, statsEngine)

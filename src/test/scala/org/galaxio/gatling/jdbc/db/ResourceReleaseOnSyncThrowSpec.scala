@@ -1,6 +1,5 @@
 package org.galaxio.gatling.jdbc.db
 
-import com.zaxxer.hikari.HikariConfig
 import org.galaxio.gatling.jdbc.db.testsupport.CloseCountingDataSource
 import org.scalatest.TryValues._
 import org.scalatest.flatspec.AnyFlatSpec
@@ -27,12 +26,7 @@ class ResourceReleaseOnSyncThrowSpec extends AnyFlatSpec with Matchers {
   private val unboundSql = "SELECT id FROM rel_items WHERE id = {a} AND name = {b}"
 
   private def withCountingClient[T](f: (CloseCountingDataSource, JDBCClient) => T): T = {
-    val cfg = new HikariConfig()
-    cfg.setJdbcUrl("jdbc:h2:mem:release_test;DB_CLOSE_DELAY=-1")
-    cfg.setUsername("sa")
-    cfg.setPassword("")
-    cfg.setMaximumPoolSize(2)
-    val ds  = new CloseCountingDataSource(cfg)
+    val ds = new CloseCountingDataSource(testsupport.H2.config("release_test", 2))
 
     val client = JDBCClient(ds, Executors.newFixedThreadPool(2))
     try {
