@@ -157,11 +157,18 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     consumer(result)
   }
 
+  /** Chunks `queries` into runs of adjacent elements sharing the same SQL text, preserving declared order (#82). */
+  private def contiguousSqlRuns(queries: Seq[SqlWithParam]): Seq[(String, Seq[SqlWithParam])] =
+    queries.foldRight(List.empty[(String, List[SqlWithParam])]) { (query, runs) =>
+      runs match {
+        case (sql, run) :: tail if sql == query.sql => (sql, query :: run) :: tail
+        case _                                      => (query.sql, List(query)) :: runs
+      }
+    }
+
   def batch[U](queries: Seq[SqlWithParam])(consumer: Try[Array[Int]] => U): Future[U] = Future {
     val result = withConnectionForBatch { (_, conn) =>
-      queries
-        .groupBy(_.sql)
-        .toSeq
+      contiguousSqlRuns(queries)
         .foldLeft[Try[Vector[Int]]](Success(Vector.empty)) { case (resultTry, (sql, group)) =>
           resultTry.flatMap { resultCounts =>
             val interpolated = Interpolator.interpolate(sql)
