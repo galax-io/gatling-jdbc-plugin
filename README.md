@@ -393,6 +393,30 @@ jdbc("select users")
     );
 ```
 
+> **Upgrading to 1.3.0 — `check(...)` returns a new builder.** Before 1.3.0 the Java query
+> builder registered checks by mutating itself in place. Since 1.3.0 `check(...)` returns a
+> **new** builder and leaves the original unchanged (this fixed shared builder branches
+> corrupting each other). Code that calls `check(...)` and ignores the returned value no
+> longer registers any checks — the load test keeps passing while asserting nothing.
+>
+> ```java
+> QueryActionBuilder builder = jdbc("select users").query("SELECT * FROM users");
+>
+> // before 1.3.0 this registered the check; since 1.3.0 it registers nothing:
+> builder.check(simpleCheck(simpleCheckType.NonEmpty));
+>
+> // since 1.3.0 — use the returned builder:
+> builder = builder.check(simpleCheck(simpleCheckType.NonEmpty));
+>
+> // or chain the calls directly:
+> jdbc("select users")
+>     .query("SELECT * FROM users")
+>     .check(simpleCheck(simpleCheckType.NonEmpty));
+> ```
+>
+> The original builder instance stays valid and unchanged — reuse it to branch independent
+> scenarios from a shared base.
+
 ## Session Variables
 
 The plugin supports [Gatling Expression Language (EL)](https://docs.gatling.io/reference/script/core/session/el/) in SQL queries. Use `#{variableName}` to reference session values.
