@@ -18,7 +18,7 @@ case class DBInsertAction(
     ctx: ScenarioContext,
     sessionValues: Seq[(String, Expression[Any])],
 ) extends ChainableAction with NameGen with ActionBase {
-  override def name: String = genName("jdbcInsertAction")
+  override val name: String = genName("jdbcInsertAction")
 
   override def execute(session: Session): Unit =
     (for {

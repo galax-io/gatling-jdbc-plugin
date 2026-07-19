@@ -23,7 +23,7 @@ case class DBQueryAction(
     ctx: ScenarioContext,
 ) extends ChainableAction with NameGen with ActionBase {
 
-  override def name: String = genName("jdbcQueryAction")
+  override val name: String = genName("jdbcQueryAction")
 
   override def execute(session: Session): Unit = {
     (for {

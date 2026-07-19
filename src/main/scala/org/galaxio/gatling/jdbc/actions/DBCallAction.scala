@@ -21,7 +21,7 @@ case class DBCallAction(
     outParams: Seq[(String, Int)],
 ) extends ChainableAction with NameGen with ActionBase {
 
-  override def name: String = genName("jdbcCallAction")
+  override val name: String = genName("jdbcCallAction")
 
   private def makeCallString(procedureName: String, inParams: Seq[(String, Any)], outParams: Seq[(String, Int)]) =
     if (outParams.isEmpty) {

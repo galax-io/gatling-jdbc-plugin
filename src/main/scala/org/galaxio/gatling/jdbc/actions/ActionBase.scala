@@ -25,13 +25,17 @@ trait ActionBase { self: ChainableAction =>
   protected def reportError(session: Session, startTime: Long, requestName: String, exception: Throwable): Unit =
     executeNext(session.markAsFailed, startTime, now, KO, next, requestName, Some("ERROR"), Some(exception.getMessage))
 
-  /** Validation crash handler: log a request crash and emit a KO response for the unresolved request. */
+  /** Validation crash handler: log a request crash and emit a KO response for the unresolved request.
+    *
+    * The request name is resolved at most once here; when resolution itself failed (the usual reason this handler runs), the
+    * action's stable Gatling `name` is used as fallback so the KO is always emitted (#77).
+    */
   protected def crashOnFailure(session: Session, requestName: Expression[String]): String => Unit =
-    message =>
-      requestName(session).map { rn =>
-        ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, message)
-        executeNext(session.markAsFailed, now, now, KO, next, rn, Some("ERROR"), Some(message))
-      }
+    message => {
+      val rn = requestName(session).toOption.getOrElse(name)
+      ctx.coreComponents.statsEngine.logRequestCrash(session.scenario, session.groups, rn, message)
+      executeNext(session.markAsFailed, now, now, KO, next, rn, Some("ERROR"), Some(message))
+    }
 
   protected def executeNext(
       session: Session,
