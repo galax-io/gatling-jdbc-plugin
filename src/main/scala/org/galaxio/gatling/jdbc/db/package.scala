@@ -47,6 +47,16 @@ package object db {
     (1 to md.getColumnCount).map(md.getColumnLabel)
   }
 
+  /** Labels validated for uniqueness before any row is mapped — a duplicate would silently overwrite a value (#123). Runs on
+    * every execution path, including the no-check discard path.
+    */
+  private[db] def validatedResultLabels(rs: ResultSet): IndexedSeq[String] = {
+    val labels     = resultLabels(rs)
+    val duplicated = labels.groupBy(identity).collect { case (label, occ) if occ.sizeIs > 1 => label }.toSeq.sorted
+    if (duplicated.nonEmpty) throw new DuplicateColumnLabelException(duplicated)
+    labels
+  }
+
   private def record(resultSet: ResultSet, labels: IndexedSeq[String]): Map[String, Any] =
     labels.zipWithIndex.foldLeft(Map.empty[String, Any]) { case (m, (label, i)) =>
       m + (label -> resultSet.getObject(i + 1))
@@ -55,7 +65,7 @@ package object db {
   implicit class ResultSetOps(val rs: ResultSet) extends AnyVal {
 
     def iterator: Iterator[Map[String, Any]] = {
-      val labels = resultLabels(rs)
+      val labels = validatedResultLabels(rs)
       new Iterator[Map[String, Any]] {
         override def hasNext: Boolean = rs.next()
 
