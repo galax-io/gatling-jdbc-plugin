@@ -30,7 +30,8 @@ final case class DBBatchAction(
 
     case BatchUpdateAction(tableName, updateValues, None) =>
       for {
-        tName   <- tableName(session)
+        tName   <- tableName(session).flatMap(validIdentifier)
+        _       <- validIdentifiers(updateValues.map(_._1))
         iParams <- resolveParams(session, updateValues)
         sql     <- SQL(s"UPDATE $tName SET ${iParams.map(c => s"${c._1} = {${c._1}}").mkString(",")}")
                      .withParamsMap(iParams)
@@ -38,8 +39,10 @@ final case class DBBatchAction(
       } yield sql
 
     case BatchUpdateAction(tableName, updateValues, Some(whereExpression)) =>
+      // the WHERE fragment is user-authored SQL by contract and is deliberately not validated
       for {
-        tName         <- tableName(session)
+        tName         <- tableName(session).flatMap(validIdentifier)
+        _             <- validIdentifiers(updateValues.map(_._1))
         iParams       <- resolveParams(session, updateValues)
         resolvedWhere <- whereExpression(session)
         sql           <- SQL(s"UPDATE $tName SET ${iParams.map(c => s"${c._1} = {${c._1}}").mkString(",")} WHERE $resolvedWhere")
@@ -49,7 +52,8 @@ final case class DBBatchAction(
 
     case BatchInsertAction(tableName, columns, sessionValues) =>
       for {
-        tName   <- tableName(session)
+        tName   <- tableName(session).flatMap(validIdentifier)
+        _       <- validIdentifiers(columns.names)
         iParams <- resolveParams(session, sessionValues)
         sql     <-
           SQL(s"INSERT INTO $tName (${columns.names.mkString(",")}) VALUES(${columns.names.map(s => s"{$s}").mkString(",")})")
