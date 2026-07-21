@@ -69,6 +69,13 @@ object KtJdbcActions {
                 .check(allResults().saveAs("RR"))
     }
 
+    fun selectWithRowCap(): QueryActionBuilder {
+        return jdbc("SELECT CAPPED")
+                .query("SELECT * FROM TEST_TABLE")
+                .maxRows(100)
+                .check(simpleCheck(simpleCheckType.NonEmpty))
+    }
+
     fun checkTestTableAfterBatch(): QueryActionBuilder {
         return jdbc("Check TEST_TABLE")
             .query(

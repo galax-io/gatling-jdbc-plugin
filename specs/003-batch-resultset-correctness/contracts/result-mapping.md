@@ -48,9 +48,10 @@ operation (KO) — never a partial row.
 | absent | absent | none (drained, counted) | OK on success; drain runs in a plugin-managed read transaction so PostgreSQL streams (auto-commit off + forward-only + fetch size); timing identical — full execute + transfer still happens |
 | absent | set | none | cap enforced while draining — count > n → KO naming the cap (cap is never silently ignored) |
 
-`maxRows` accepts any positive `Int` including `Int.MaxValue` (guard math in `Long`);
-the driver-side `setLargeMaxRows(cap + 1)` hint is best-effort — correctness always
-comes from counting.
+`maxRows` accepts any positive `Int` including `Int.MaxValue` (hint skipped at the
+boundary — no overflow); the driver-side `setMaxRows(cap + 1)` hint is best-effort —
+correctness always comes from counting. `setLargeMaxRows` is deliberately not used:
+drivers without it raise SQLSTATE 0A000 and HikariCP poisons the connection.
 
 ## Engine coverage
 

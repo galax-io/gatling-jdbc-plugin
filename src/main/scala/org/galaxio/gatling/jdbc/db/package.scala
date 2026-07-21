@@ -57,7 +57,11 @@ package object db {
     labels
   }
 
-  private def record(resultSet: ResultSet, labels: IndexedSeq[String]): Map[String, Any] =
+  /** `private[db]` so callers that must control row-by-row consumption precisely (the capped select in `JDBCClient`, to avoid
+    * mapping/detaching an overflow row it is about to reject) can call it directly instead of going through the convenience
+    * iterator.
+    */
+  private[db] def record(resultSet: ResultSet, labels: IndexedSeq[String]): Map[String, Any] =
     labels.zipWithIndex.foldLeft(Map.empty[String, Any]) { case (m, (label, i)) =>
       m + (label -> resultSet.getObject(i + 1))
     }

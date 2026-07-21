@@ -20,6 +20,11 @@ public class QueryActionBuilder implements ActionBuilder {
         return new QueryActionBuilder(wrapped.check(org.galaxio.gatling.jdbc.internal.JdbcCheck.toScalaChecks(checks)));
     }
 
+    /** Caps the rows read for this query (#86); a result exceeding the cap fails the request instead of truncating. */
+    public QueryActionBuilder maxRows(int n) {
+        return new QueryActionBuilder(wrapped.maxRows(n));
+    }
+
     @Override
     public io.gatling.core.action.builder.ActionBuilder asScala() {
         return this.wrapped;
