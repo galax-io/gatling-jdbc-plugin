@@ -195,6 +195,21 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
       }
   }
 
+  // Regression for issue #86 (US4): the discard path's streaming mechanism exists FOR PostgreSQL —
+  // a plugin-managed read transaction + forward-only cursor + fetch size is the only way pgjdbc streams.
+  // Prove the drain completes, counts correctly, and the transaction scope commits cleanly on a real PG.
+  it should "drain a large result via the discard path without retaining rows" in {
+    client.executeSelectDiscard("SELECT gs FROM generate_series(1, 100000) AS gs", Seq.empty, None) { result =>
+      result.success.value shouldBe 100000L
+    }
+  }
+
+  it should "enforce the maxRows cap on the discard path" in {
+    client.executeSelectDiscard("SELECT gs FROM generate_series(1, 11) AS gs", Seq.empty, Some(10)) { result =>
+      result.failure.exception.getMessage should include("maxRows")
+    }
+  }
+
   // Regression for issue #120: under concurrent load every multi-param insert must write
   // exactly the values declared for it — no swapped or corrupted bindings between users.
   it should "bind every parameter of concurrent multi-param inserts exactly to its declared value" in {

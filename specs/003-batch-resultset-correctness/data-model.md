@@ -85,10 +85,12 @@ combinations are defined — the cap is never silently ignored:
 | absent | absent | discard path: rows drained inside a plugin-managed read transaction (streams on PostgreSQL), counted, not retained — memory O(1) per query |
 | absent | set | discard path **with the cap enforced while draining**; overflow → KO naming the cap |
 
-- `maxRows` must be positive (`require`); `Int.MaxValue` is valid — guard math runs in
-  `Long` so `cap + 1` cannot overflow.
-- Driver-side transfer guard (`setLargeMaxRows(cap + 1)`) is best-effort and skipped
-  where unsupported; correctness always comes from counting while reading.
+- `maxRows` must be positive (`require`); `Int.MaxValue` is valid — the driver hint is
+  skipped at that boundary so `cap + 1` cannot overflow.
+- Driver-side transfer guard is `setMaxRows(cap + 1)`, best-effort; `setLargeMaxRows`
+  is deliberately not used (pgjdbc raises SQLSTATE 0A000, which HikariCP treats as a
+  connection error and poisons the connection). Correctness always comes from counting
+  while reading.
 
 ## Dynamic Identifier
 

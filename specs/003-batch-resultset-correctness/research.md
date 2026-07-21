@@ -116,9 +116,12 @@ not `AutoCloseable`; a wrapper adds surface for no gain over try/finally).
    The cap applies on **every** path — materializing and discard alike (a cap silently
    ignored on no-check queries would be exactly the silent-behavior class this milestone
    kills). Exceeding the cap fails the request (KO) with an explicit message. A
-   driver-side transfer guard is set best-effort (`setLargeMaxRows(cap + 1)` computed in
-   `Long` so `Int.MaxValue` cannot overflow; hint skipped where unsupported) —
-   correctness always comes from counting while reading, never from the hint.
+   driver-side transfer guard is set best-effort via `setMaxRows(cap + 1)`, skipped at
+   `Int.MaxValue` (overflow) — `setLargeMaxRows` is deliberately avoided: drivers
+   without it (pgjdbc) raise SQLFeatureNotSupportedException with SQLSTATE 0A000, which
+   HikariCP treats as a connection error state and poisons the pooled connection
+   (found by the PostgreSQL discard-path regression test). Correctness always comes
+   from counting while reading, never from the hint.
 3. **Default unchanged**: no cap configured + checks present → today's full
    materialization (spec Assumptions, compat).
 

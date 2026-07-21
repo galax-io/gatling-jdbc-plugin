@@ -16,6 +16,7 @@ object KtJdbcBasicSimulation {
         .exec(KtJdbcActions.selectTest())
         .exec(KtJdbcActions.selectTT())
         .exec(KtJdbcActions.selectAfterBatch())
+        .exec(KtJdbcActions.selectWithRowCap())
         .exec(KtJdbcActions.checkTestTableAfterBatch())
 
 }
