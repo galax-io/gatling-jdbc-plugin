@@ -23,6 +23,10 @@ object JdbcProtocol {
     }
   }
 
+  /** #88: must run before the executor or the connection pool exists — nothing to leak on the rejection path. */
+  private[protocol] def validateHikariConfig(cfg: HikariConfig): Unit =
+    if (!cfg.isAutoCommit) throw new IllegalArgumentException(JDBCClient.AutoCommitRequiredMessage)
+
   val jdbcProtocolKey: ProtocolKey[JdbcProtocol, JdbcComponents] = new ProtocolKey[JdbcProtocol, JdbcComponents] {
     override def protocolClass: Class[Protocol] = classOf[JdbcProtocol].asInstanceOf[Class[Protocol]]
 
@@ -31,6 +35,7 @@ object JdbcProtocol {
 
     override def newComponents(coreComponents: CoreComponents): JdbcProtocol => JdbcComponents =
       protocol => {
+        validateHikariConfig(protocol.hikariConfig)
         val blockingPool   = Executors.newFixedThreadPool(protocol.blockingPoolSize, new JdbcThreadFactory("jdbc-blocking"))
         val connectionPool = new HikariDataSource(protocol.hikariConfig)
         val client         = JDBCClient(connectionPool, blockingPool, protocol.queryTimeout)
