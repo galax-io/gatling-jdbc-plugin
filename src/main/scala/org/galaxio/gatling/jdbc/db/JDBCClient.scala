@@ -4,7 +4,7 @@ import com.zaxxer.hikari.HikariDataSource
 import JDBCClient.Interpolator
 import statements._
 
-import java.sql.{CallableStatement, Connection, PreparedStatement, Statement}
+import java.sql.{CallableStatement, Connection, PreparedStatement, ResultSet, SQLFeatureNotSupportedException, Statement}
 import java.util.concurrent.{ExecutorService, TimeUnit}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
@@ -63,6 +63,9 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     else math.max(0, secs.toInt)
   }
 
+  /** Streaming hint for the discard path — the drain holds at most one fetch batch in driver memory. */
+  private val DiscardFetchSize = 1000
+
   /** Plugin-managed transaction: auto-commit disabled for the scope, restored on release. The primary failure must be THROWN
     * out of `op` (never returned as a value) so `Using.Manager` suppresses release failures onto it instead of replacing it
     * (#84).
@@ -119,12 +122,87 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
   def executeSelect[U](
       sql: String,
       params: Seq[(String, ParamVal)],
+  )(consumer: Try[List[Map[String, Any]]] => U): Future[U] =
+    executeSelect(sql, params, None)(consumer)
+
+  /** Materializing select with an optional row cap (#86). Exceeding the cap fails the operation — truncated check input would
+    * be silent wrong data.
+    */
+  def executeSelect[U](
+      sql: String,
+      params: Seq[(String, ParamVal)],
+      maxRows: Option[Int],
   )(consumer: Try[List[Map[String, Any]]] => U): Future[U] = Future {
     val result = withPreparedStatement(sql, params.toMap) { (use, stmt) =>
-      use(stmt.executeQuery).iterator.toList
+      maxRows.foreach(applyDriverRowGuard(stmt, _))
+      val rs = use(stmt.executeQuery)
+      maxRows match {
+        case Some(cap) =>
+          // cap + 1 detects overflow; at Int.MaxValue a List cannot exceed the cap anyway, so skip the +1 (Int overflow)
+          val readLimit = if (cap == Int.MaxValue) cap else cap + 1
+          val rows      = rs.iterator.take(readLimit).toList
+          if (rows.sizeIs > cap) throw maxRowsExceeded(cap)
+          rows
+        case None      => rs.iterator.toList
+      }
     }
     consumer(result)
   }
+
+  /** Drains the full ResultSet without retaining rows and returns the row count (#86): the path for queries with no checks.
+    *
+    * The drain runs in a plugin-managed read transaction (auto-commit off for the scope) with a forward-only statement and a
+    * fetch-size hint — PostgreSQL only streams under exactly these conditions; H2 is indifferent. Duplicate labels are still
+    * rejected (#123) and the `maxRows` cap is still enforced: a cap is never silently ignored.
+    */
+  def executeSelectDiscard[U](
+      sql: String,
+      params: Seq[(String, ParamVal)],
+      maxRows: Option[Int],
+  )(consumer: Try[Long] => U): Future[U] = Future {
+    val result = withTransaction { (conn, scope) =>
+      try {
+        val interpolatedCtx = Interpolator.interpolate(sql)
+        val count           = Using.resource(
+          conn.prepareStatement(interpolatedCtx.queryString, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY),
+        ) { stmt =>
+          queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+          stmt.setFetchSize(DiscardFetchSize)
+          maxRows.foreach(applyDriverRowGuard(stmt, _))
+          stmt.setParams(interpolatedCtx, params.toMap)
+          Using.resource(stmt.executeQuery) { rs =>
+            validatedResultLabels(rs)
+            var count = 0L
+            while (rs.next()) {
+              count += 1
+              maxRows.foreach(cap => if (count > cap) throw maxRowsExceeded(cap))
+            }
+            count
+          }
+        }
+        conn.commit()
+        count
+      } catch {
+        case NonFatal(primary) =>
+          scope.rollbackAfter(primary)
+          throw primary
+      }
+    }
+    consumer(result)
+  }
+
+  private def maxRowsExceeded(cap: Int): IllegalStateException =
+    new IllegalStateException(s"Query result exceeded the configured maxRows cap of $cap; failing instead of truncating")
+
+  /** Best-effort driver-side transfer guard; correctness always comes from counting while reading. Guard math in Long so an
+    * Int.MaxValue cap cannot overflow.
+    */
+  private def applyDriverRowGuard(stmt: Statement, cap: Int): Unit =
+    try stmt.setLargeMaxRows(cap.toLong + 1)
+    catch {
+      case _: UnsupportedOperationException | _: SQLFeatureNotSupportedException =>
+        if (cap < Int.MaxValue) stmt.setMaxRows(cap + 1)
+    }
 
   def executeUpdate[U](sql: String, params: Seq[(String, ParamVal)])(
       consumer: Try[Int] => U,

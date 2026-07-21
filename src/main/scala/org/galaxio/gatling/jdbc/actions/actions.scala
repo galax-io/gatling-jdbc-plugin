@@ -45,10 +45,17 @@ object actions {
       sql: Expression[String],
       params: Seq[(String, Expression[Any])],
       checks: Seq[JdbcCheck] = Seq.empty,
+      maxRows: Option[Int] = None,
   ) extends ActionBuilder {
 
     /** Appends `newChecks` to the already-declared checks (#79); checks execute in declaration order. */
     def check(newChecks: JdbcCheck*): QueryActionBuilder = this.copy(checks = checks ++ newChecks)
+
+    /** Caps the rows read for this query (#86); a result exceeding the cap fails the request instead of truncating. */
+    def maxRows(n: Int): QueryActionBuilder = {
+      require(n > 0, "maxRows must be positive")
+      this.copy(maxRows = Some(n))
+    }
 
     override def build(ctx: ScenarioContext, next: Action): Action = DBQueryAction(
       requestName,
@@ -57,6 +64,7 @@ object actions {
       checks,
       next,
       ctx,
+      maxRows,
     )
   }
 
