@@ -195,6 +195,32 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
       }
   }
 
+  // Regression for issue #87 (US5): PostgreSQL bytea/text/xml values must be fully readable after the
+  // operation completes. PG carries the XML assertion — its SQLXML value is a live locator, H2's support is weak.
+  it should "detach bytea, text and xml values so checks read them after completion" in {
+    client
+      .executeRaw("CREATE TABLE IF NOT EXISTS lob_items (id INT PRIMARY KEY, b bytea, t text, x xml)") { result =>
+        result.success.value shouldBe false
+      }
+      .flatMap { _ =>
+        client.executeRaw(
+          """INSERT INTO lob_items VALUES (1, '\xdeadbeef', 'text-content', '<a>1</a>'::xml)
+            |ON CONFLICT (id) DO NOTHING""".stripMargin,
+        ) { result =>
+          result.success.value shouldBe false
+        }
+      }
+      .flatMap { _ =>
+        client.executeSelect("SELECT b, t, x FROM lob_items WHERE id = {id}", Seq("id" -> IntParam(1))) { result =>
+          val row = result.success.value.head
+
+          row("b").asInstanceOf[Array[Byte]] shouldBe Array(0xde, 0xad, 0xbe, 0xef).map(_.toByte)
+          row("t") shouldBe "text-content"
+          row("x") shouldBe "<a>1</a>"
+        }
+      }
+  }
+
   // Regression for issue #120: under concurrent load every multi-param insert must write
   // exactly the values declared for it — no swapped or corrupted bindings between users.
   it should "bind every parameter of concurrent multi-param inserts exactly to its declared value" in {
