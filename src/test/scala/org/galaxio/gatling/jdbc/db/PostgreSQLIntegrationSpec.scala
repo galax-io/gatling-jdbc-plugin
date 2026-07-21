@@ -173,6 +173,28 @@ class PostgreSQLIntegrationSpec extends AsyncFlatSpec with Matchers with BeforeA
       }
   }
 
+  // Regression for issue #122 (US2): result keys are the labels as written in the query.
+  // PostgreSQL lower-cases unquoted labels; quoted labels stay verbatim.
+  it should "key aliased columns by the alias with PostgreSQL case rules" in {
+    client
+      .executeUpdate("INSERT INTO items (name) VALUES ({name})", Seq("name" -> StrParam("label_case"))) { result =>
+        result.success.value shouldBe 1
+      }
+      .flatMap { _ =>
+        client.executeSelect(
+          """SELECT name AS customer_name, name AS "MixedCase" FROM items WHERE name = {name}""",
+          Seq("name" -> StrParam("label_case")),
+        ) { result =>
+          val rows = result.success.value
+
+          rows should have size 1
+          rows.head.keySet shouldBe Set("customer_name", "MixedCase")
+          rows.head("customer_name") shouldBe "label_case"
+          rows.head("MixedCase") shouldBe "label_case"
+        }
+      }
+  }
+
   // Regression for issue #120: under concurrent load every multi-param insert must write
   // exactly the values declared for it — no swapped or corrupted bindings between users.
   it should "bind every parameter of concurrent multi-param inserts exactly to its declared value" in {
