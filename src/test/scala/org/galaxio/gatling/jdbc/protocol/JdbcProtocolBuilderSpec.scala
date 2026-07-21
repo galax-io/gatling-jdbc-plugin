@@ -1,5 +1,6 @@
 package org.galaxio.gatling.jdbc.protocol
 
+import com.zaxxer.hikari.HikariConfig
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -79,6 +80,30 @@ class JdbcProtocolBuilderSpec extends AnyFlatSpec with Matchers {
         password = "",
       ).queryTimeout(-1.seconds)
     }
+  }
+
+  // Issue #88 (US1): autoCommit=false has no working use case in this plugin and must be
+  // rejected before newComponents allocates the executor or the connection pool.
+  "JdbcProtocol.validateHikariConfig" should "reject autoCommit=false before any resource is allocated" in {
+    val cfg = new HikariConfig()
+    cfg.setJdbcUrl("jdbc:h2:mem:autocommit_protocol_reject")
+    cfg.setUsername("sa")
+    cfg.setPassword("")
+    cfg.setAutoCommit(false)
+
+    val ex = the[IllegalArgumentException] thrownBy JdbcProtocol.validateHikariConfig(cfg)
+    ex.getMessage should include("auto-commit")
+    ex.getMessage should include("batch")
+    ex.getMessage should include("rawSql")
+  }
+
+  it should "accept the default auto-commit configuration" in {
+    val cfg = new HikariConfig()
+    cfg.setJdbcUrl("jdbc:h2:mem:autocommit_protocol_ok")
+    cfg.setUsername("sa")
+    cfg.setPassword("")
+
+    noException should be thrownBy JdbcProtocol.validateHikariConfig(cfg)
   }
 
   it should "round up sub-second durations to 1 second" in {

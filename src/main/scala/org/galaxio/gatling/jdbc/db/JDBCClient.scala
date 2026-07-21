@@ -37,8 +37,20 @@ object JDBCClient {
     }
   }
 
-  def apply(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None): JDBCClient =
+  /** Auto-commit is a hard requirement (#88): Hikari rolls back dirty connections on checkin and connections are never pinned
+    * to a virtual user, so a cross-action transaction can never commit — autoCommit=false only produces OK reports for writes
+    * that silently vanish.
+    */
+  private[jdbc] val AutoCommitRequiredMessage: String =
+    "gatling-jdbc requires auto-commit connections: the pool rolls back dirty connections after every action and " +
+      "connections are not pinned to virtual users, so cross-action transactions can never commit. " +
+      "Remove setAutoCommit(false) from the HikariConfig; for transactional work use the batch DSL " +
+      "(one plugin-managed transaction per request) or a single rawSql action containing the whole BEGIN; ...; COMMIT block."
+
+  def apply(pool: HikariDataSource, blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None): JDBCClient = {
+    if (!pool.isAutoCommit) throw new IllegalArgumentException(AutoCommitRequiredMessage)
     new JDBCClient(pool, blockingPool, queryTimeout)
+  }
 }
 
 class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, queryTimeout: Option[FiniteDuration] = None) {
