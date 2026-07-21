@@ -5,7 +5,7 @@ import io.gatling.commons.validation._
 import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
 import io.gatling.core.structure.ScenarioContext
-import org.galaxio.gatling.jdbc.db.JDBCClient
+import org.galaxio.gatling.jdbc.db.{JDBCClient, SqlIdentifier}
 import org.galaxio.gatling.jdbc.protocol.JdbcProtocol
 
 trait ActionBase { self: ChainableAction =>
@@ -15,6 +15,19 @@ trait ActionBase { self: ChainableAction =>
   protected val dbClient: JDBCClient = jdbcComponents.client
 
   protected def now: Long = ctx.coreComponents.clock.nowMillis
+
+  /** Validates one identifier against the allowlist grammar (#124); failure flows to the crash KO path, no SQL is built. */
+  protected def validIdentifier(value: String): Validation[String] =
+    SqlIdentifier.validate(value) match {
+      case Right(identifier) => identifier.success
+      case Left(error)       => error.getMessage.failure
+    }
+
+  /** Validates a group of static identifiers (column names) in declaration order. */
+  protected def validIdentifiers(values: Seq[String]): Validation[Seq[String]] =
+    values.foldLeft(Seq.empty[String].success: Validation[Seq[String]]) { (acc, value) =>
+      acc.flatMap(seen => validIdentifier(value).map(seen :+ _))
+    }
 
   protected def resolveParams(session: Session, params: Seq[(String, Expression[Any])]): Validation[Map[String, Any]] =
     params.foldLeft(Map.empty[String, Any].success) { case (r, (k, v)) =>
