@@ -8,7 +8,8 @@ import java.sql.{CallableStatement, Connection, PreparedStatement, Statement}
 import java.util.concurrent.{ExecutorService, TimeUnit}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
-import scala.util.{Failure, Success, Try, Using}
+import scala.util.control.NonFatal
+import scala.util.{Try, Using}
 
 object JDBCClient {
   object Interpolator {
@@ -64,11 +65,15 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     else math.max(0, secs.toInt)
   }
 
-  private def withConnectionForBatch[T](op: (Using.Manager, Connection) => T): Try[T] =
+  /** Plugin-managed transaction: auto-commit disabled for the scope, restored on release. The primary failure must be THROWN
+    * out of `op` (never returned as a value) so `Using.Manager` suppresses release failures onto it instead of replacing it
+    * (#84).
+    */
+  private def withTransaction[T](op: (Connection, TransactionScope) => T): Try[T] =
     Using.Manager { use =>
-      val conn = use(pool.getConnection)
-      use(new DisableAutoCommit(conn))
-      op(use, conn)
+      val conn  = use(pool.getConnection)
+      val scope = use(new TransactionScope(conn))
+      op(conn, scope)
     }
 
   private def withStatement[T](op: (Using.Manager, Statement) => T): Try[T] =
@@ -181,27 +186,28 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     }
 
   def batch[U](queries: Seq[SqlWithParam])(consumer: Try[Array[Int]] => U): Future[U] = Future {
-    val result = withConnectionForBatch { (_, conn) =>
-      contiguousSqlRuns(queries)
-        .foldLeft[Try[Vector[Int]]](Success(Vector.empty)) { case (resultTry, (sql, group)) =>
-          resultTry.flatMap { resultCounts =>
-            val interpolated = Interpolator.interpolate(sql)
-            Using(conn.prepareStatement(interpolated.queryString)) { stmt =>
-              queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
-              group.foreach { query =>
-                stmt.setParams(interpolated, query.params.toMap)
-                stmt.addBatch()
-              }
-              stmt.executeBatch()
-            }.map { batchCounts => resultCounts ++ batchCounts }
+    val result = withTransaction { (conn, scope) =>
+      try {
+        val counts = contiguousSqlRuns(queries).foldLeft(Vector.empty[Int]) { case (resultCounts, (sql, group)) =>
+          val interpolated = Interpolator.interpolate(sql)
+          val batchCounts  = Using.resource(conn.prepareStatement(interpolated.queryString)) { stmt =>
+            queryTimeoutSeconds.foreach(stmt.setQueryTimeout)
+            group.foreach { query =>
+              stmt.setParams(interpolated, query.params.toMap)
+              stmt.addBatch()
+            }
+            stmt.executeBatch()
           }
+          resultCounts ++ batchCounts
         }
-        .map(_.toArray)
-        .transform(
-          result => Try(conn.commit()).map(_ => result),
-          exception => Try(conn.rollback()).flatMap(_ => Failure(exception)),
-        )
-    }.flatten
+        conn.commit()
+        counts.toArray
+      } catch {
+        case NonFatal(primary) =>
+          scope.rollbackAfter(primary)
+          throw primary
+      }
+    }
     consumer(result)
   }
 
@@ -211,9 +217,26 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     blockingPool.awaitTermination(30, TimeUnit.SECONDS)
   }
 
-  private class DisableAutoCommit(private val connection: Connection) extends AutoCloseable {
+  /** Auto-commit scope for a plugin-managed transaction. After a failed rollback the connection is in unknown state and
+    * restoring auto-commit would COMMIT the open transaction (JDBC semantics on the false→true transition) — persisting partial
+    * work under a KO report. Such a connection is evicted from the pool instead, and the restore is skipped (#84).
+    */
+  private class TransactionScope(connection: Connection) extends AutoCloseable {
     private val previousAutoCommit = connection.getAutoCommit
+    private var broken             = false
     connection.setAutoCommit(false)
-    override def close(): Unit     = connection.setAutoCommit(previousAutoCommit)
+
+    /** Roll back after `primary` failed; a rollback failure is suppressed onto `primary`, never thrown. */
+    def rollbackAfter(primary: Throwable): Unit =
+      try connection.rollback()
+      catch {
+        case NonFatal(rollbackFailure) =>
+          primary.addSuppressed(rollbackFailure)
+          broken = true
+          try pool.evictConnection(connection)
+          catch { case NonFatal(evictFailure) => primary.addSuppressed(evictFailure) }
+      }
+
+    override def close(): Unit = if (!broken) connection.setAutoCommit(previousAutoCommit)
   }
 }
