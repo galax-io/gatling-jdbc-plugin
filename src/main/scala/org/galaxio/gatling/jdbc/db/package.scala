@@ -3,6 +3,7 @@ package org.galaxio.gatling.jdbc
 import java.sql.ResultSet
 import java.time.LocalDateTime
 import java.util.UUID
+import scala.util.control.NonFatal
 
 package object db {
 
@@ -63,8 +64,60 @@ package object db {
     */
   private[db] def record(resultSet: ResultSet, labels: IndexedSeq[String]): Map[String, Any] =
     labels.zipWithIndex.foldLeft(Map.empty[String, Any]) { case (m, (label, i)) =>
-      m + (label -> resultSet.getObject(i + 1))
+      m + (label -> detach(resultSet.getObject(i + 1)))
     }
+
+  /** Copies driver-managed values while the ResultSet is still open and frees their locators (#87): a Blob/Clob/SQLXML/Array
+    * handle stored in the session would be dead by check time — resources close before the consumer runs. Non-locator values
+    * pass through unchanged. `private[db]` for direct free-failure coverage in tests.
+    */
+  private[db] def detach(value: Any): Any = value match {
+    case null                  => null
+    case blob: java.sql.Blob   =>
+      withFreed(blob.free()) {
+        blob.getBytes(1, lengthAsInt("BLOB", blob.length()))
+      }
+    case clob: java.sql.Clob   => // NClob extends Clob — same detachment
+      withFreed(clob.free()) {
+        val length = lengthAsInt("CLOB", clob.length())
+        if (length == 0) "" else clob.getSubString(1, length)
+      }
+    case xml: java.sql.SQLXML  =>
+      withFreed(xml.free())(xml.getString)
+    case array: java.sql.Array =>
+      withFreed(array.free()) {
+        array.getArray match {
+          case elements: Array[_] => elements.toVector.map(detach)
+          case other              => other
+        }
+      }
+    case other                 => other
+  }
+
+  private def lengthAsInt(kind: String, length: Long): Int = {
+    if (length > Int.MaxValue)
+      throw new IllegalStateException(s"$kind of length $length exceeds the maximum supported size of Int.MaxValue")
+    length.toInt
+  }
+
+  /** Runs `body`, then frees the locator in a finally-equivalent path: a free failure is suppressed onto the primary copy
+    * failure (never replacing it) or thrown itself when the copy succeeded — the locator is never silently leaked.
+    */
+  private def withFreed[T](free: => Unit)(body: => T): T = {
+    var primary: Throwable = null
+    try body
+    catch {
+      case NonFatal(e) =>
+        primary = e
+        throw e
+    } finally {
+      try free
+      catch {
+        case NonFatal(freeFailure) =>
+          if (primary != null) primary.addSuppressed(freeFailure) else throw freeFailure
+      }
+    }
+  }
 
   implicit class ResultSetOps(val rs: ResultSet) extends AnyVal {
 
