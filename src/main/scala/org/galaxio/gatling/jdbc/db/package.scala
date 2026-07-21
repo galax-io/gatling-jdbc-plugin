@@ -39,22 +39,29 @@ package object db {
     def withOutParams(ps: Seq[(String, Int)]): SqlWithParam = SqlWithParam(sql, params, ps)
   }
 
-  private def record(resultSet: ResultSet): Map[String, Any] = {
-    val md      = resultSet.getMetaData
-    val columns = md.getColumnCount
-    (1 to columns).foldLeft(Map.empty[String, Any]) { (m, i) =>
-      m + (md.getColumnName(i) -> resultSet.getObject(i))
-    }
+  /** Result-row keys are the column labels as written in the query (`AS` alias when present), verbatim — never the physical
+    * column name and never case-normalized (#122). Read once per ResultSet, not per row.
+    */
+  private[db] def resultLabels(rs: ResultSet): IndexedSeq[String] = {
+    val md = rs.getMetaData
+    (1 to md.getColumnCount).map(md.getColumnLabel)
   }
+
+  private def record(resultSet: ResultSet, labels: IndexedSeq[String]): Map[String, Any] =
+    labels.zipWithIndex.foldLeft(Map.empty[String, Any]) { case (m, (label, i)) =>
+      m + (label -> resultSet.getObject(i + 1))
+    }
 
   implicit class ResultSetOps(val rs: ResultSet) extends AnyVal {
 
-    def iterator: Iterator[Map[String, Any]] =
+    def iterator: Iterator[Map[String, Any]] = {
+      val labels = resultLabels(rs)
       new Iterator[Map[String, Any]] {
         override def hasNext: Boolean = rs.next()
 
-        override def next(): Map[String, Any] = record(rs)
+        override def next(): Map[String, Any] = record(rs, labels)
       }
+    }
 
   }
 }
