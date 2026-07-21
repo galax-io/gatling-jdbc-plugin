@@ -56,9 +56,13 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Gate one PR (the merge gate). Fails if the PR is missing a milestone, closes no
-# issue, or closes an issue in a different milestone. Strict: requires a registered
-# GitHub closing link (no body-text fallback — that lenient path is audit-mode only).
+# Gate one PR (the merge gate). Fails if the PR is missing a milestone, or closes an
+# issue in a different milestone. Does NOT require a closing link by itself: a PR with
+# no tracked issue behind it (docs/chore/companion work, or anything merged without one)
+# owes nothing here — the obligation is one-directional. When a tracked issue DOES exist
+# for this milestone, it must be closed by a PR that actually links it (Closes #<issue>);
+# that's enforced by the issue-side check below (audit) / in TAG_MODE (release gate),
+# not by demanding every PR produce a link regardless of whether an issue exists.
 if [ -n "$PR_NUM" ]; then
   pj=$(gh pr view "$PR_NUM" --repo "$REPO" --json number,title,state,milestone,closingIssuesReferences) \
     || { echo "error: PR #$PR_NUM not found in $REPO" >&2; exit 2; }
@@ -70,7 +74,7 @@ if [ -n "$PR_NUM" ]; then
   if [ -z "$p_ms" ]; then printf '  ✗ no milestone — assign one (gh pr edit %s --milestone "…")\n' "$PR_NUM"; e=1
   else printf '  ✓ milestone: %s\n' "$p_ms"; fi
   if [ -z "$p_closes" ]; then
-    printf '  ✗ closes no issue — add "Closes #<issue>" to the PR body\n'; e=1
+    printf '  ! closes no issue (fine if none was tracked for this work)\n'
   else
     for i in $p_closes; do
       i_ms=$(gh issue view "$i" --repo "$REPO" --json milestone -q '.milestone.title // ""' 2>/dev/null || echo "")
@@ -150,7 +154,12 @@ for pr in $pr_numbers; do
   fi
 
   if [ -z "$ref_nums" ]; then
-    err "PR #$pr ($pr_state) closes no issue — add 'Closes #<issue>': $pr_title"
+    # A PR owes a closing link only when a tracked issue exists behind it. Absence of a
+    # link isn't itself a violation — the obligation is one-directional: if a tracked
+    # issue exists, ITS PR must link it (enforced below, and by TAG_MODE's per-issue
+    # closed-state check); a PR with no issue behind it (docs/chore/companion work, or
+    # anything merged without one) owes nothing here regardless of its commit type.
+    warn "PR #$pr ($pr_state) closes no issue (fine if none was tracked for this work): $pr_title"
     continue
   fi
 
