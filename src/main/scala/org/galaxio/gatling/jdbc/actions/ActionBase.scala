@@ -21,9 +21,44 @@ trait ActionBase { self: ChainableAction =>
       r.flatMap(m => v(session).map(rv => m + (k -> rv)))
     }
 
-  /** KO callback for a failed JDBC execution: mark the session failed and log the response. */
+  /** KO callback for a failed JDBC execution: mark the session failed and log the response.
+    *
+    * Cleanup failures (rollback, statement/connection close) are attached to the primary exception via `addSuppressed` (#84) so
+    * the exception object carries the full picture — but nothing else in this codebase logs a `Throwable`, so without this the
+    * suppressed detail would never reach the simulation report or any log a triaging engineer can see (spec 003 US3: "an
+    * engineer ... sees the original database error ... even when cleanup ... also fails"). A bounded summary is folded into the
+    * KO message instead of the raw exception, to avoid an unbounded report string.
+    */
   protected def reportError(session: Session, startTime: Long, requestName: String, exception: Throwable): Unit =
-    executeNext(session.markAsFailed, startTime, now, KO, next, requestName, Some("ERROR"), Some(exception.getMessage))
+    executeNext(
+      session.markAsFailed,
+      startTime,
+      now,
+      KO,
+      next,
+      requestName,
+      Some("ERROR"),
+      Some(messageWithSuppressed(exception)),
+    )
+
+  private val MaxSuppressedShown  = 3
+  private val MaxSuppressedMsgLen = 200
+
+  private def messageWithSuppressed(exception: Throwable): String = {
+    val suppressed = exception.getSuppressed
+    if (suppressed.isEmpty) exception.getMessage
+    else {
+      val summary = suppressed
+        .take(MaxSuppressedShown)
+        .map { s =>
+          val msg = Option(s.getMessage).getOrElse("")
+          s"${s.getClass.getSimpleName}: ${msg.take(MaxSuppressedMsgLen)}"
+        }
+        .mkString("; ")
+      val more    = if (suppressed.length > MaxSuppressedShown) s" (+${suppressed.length - MaxSuppressedShown} more)" else ""
+      s"${exception.getMessage} [cleanup also failed: $summary$more]"
+    }
+  }
 
   /** Validation crash handler: log a request crash and emit a KO response for the unresolved request.
     *
