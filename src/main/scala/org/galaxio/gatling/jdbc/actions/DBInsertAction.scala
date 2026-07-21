@@ -23,7 +23,8 @@ case class DBInsertAction(
   override def execute(session: Session): Unit =
     (for {
       rn       <- requestName(session)
-      tName    <- tableName(session)
+      tName    <- tableName(session).flatMap(validIdentifier)
+      _        <- validIdentifiers(columns)
       iParams  <- resolveParams(session, sessionValues)
       sql       = SQL(s"INSERT INTO $tName (${columns.mkString(",")}) VALUES(${columns.map(s => s"{$s}").mkString(",")})")
                     .withParamsMap(iParams)
