@@ -1,24 +1,19 @@
 package org.galaxio.gatling.jdbc.db
 
-import org.galaxio.gatling.jdbc.db.testsupport.H2
-import org.scalatest.BeforeAndAfterAll
+import org.galaxio.gatling.jdbc.db.testsupport.H2ClientSpecFixture
 import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import java.util.concurrent.Executors
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 
 /** Regression spec for issue #87 (US5): large-object values are detached while the ResultSet is open — BLOB → Array[Byte],
   * CLOB/NCLOB → String, ARRAY → Vector — so checks read real content after the operation completes instead of dead locators.
   */
-class LobDetachmentSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class LobDetachmentSpec extends AnyFlatSpec with Matchers with H2ClientSpecFixture {
 
-  private val dbName       = "lob_detachment"
-  private val dataSource   = H2.dataSource(dbName, 2)
-  private val blockingPool = Executors.newFixedThreadPool(2)
-  private val client       = JDBCClient(dataSource, blockingPool)
+  override protected val dbName = "lob_detachment"
 
   override def beforeAll(): Unit = {
     exec("CREATE TABLE IF NOT EXISTS lob_rows (id INT PRIMARY KEY, bin BLOB, txt CLOB, ntxt NCLOB, arr INTEGER ARRAY)")
@@ -27,12 +22,6 @@ class LobDetachmentSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     exec("INSERT INTO lob_rows VALUES (2, NULL, NULL, NULL, NULL)")
     exec("INSERT INTO lob_rows VALUES (3, X'', '', '', ARRAY[])")
   }
-
-  override def afterAll(): Unit =
-    client.close()
-
-  private def exec(sql: String): Unit =
-    Await.result(client.executeRaw(sql)(identity), 10.seconds)
 
   private def selectRow(id: Int): Map[String, Any] =
     Await

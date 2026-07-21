@@ -1,13 +1,11 @@
 package org.galaxio.gatling.jdbc.db
 
 import com.zaxxer.hikari.HikariDataSource
-import org.galaxio.gatling.jdbc.db.testsupport.H2
-import org.scalatest.BeforeAndAfterAll
+import org.galaxio.gatling.jdbc.db.testsupport.{H2, H2ClientSpecFixture}
 import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import java.sql.DriverManager
 import java.util.concurrent.Executors
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
@@ -16,32 +14,13 @@ import scala.util.Failure
 /** Regression spec for issue #88 (US1): an operation reported OK must be durably persisted, and pool configurations that
   * silently defeat that guarantee are rejected at startup.
   */
-class AutoCommitGuardSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class AutoCommitGuardSpec extends AnyFlatSpec with Matchers with H2ClientSpecFixture {
 
-  private val dbName       = "autocommit_guard"
-  private val dataSource   = H2.dataSource(dbName, 2)
-  private val blockingPool = Executors.newFixedThreadPool(2)
-  private val client       = JDBCClient(dataSource, blockingPool)
+  override protected val dbName = "autocommit_guard"
 
   override def beforeAll(): Unit = {
     exec("CREATE TABLE IF NOT EXISTS guard_rows (id INT PRIMARY KEY, name VARCHAR(50))")
     exec("DELETE FROM guard_rows")
-  }
-
-  override def afterAll(): Unit =
-    client.close()
-
-  private def exec(sql: String): Unit =
-    Await.result(client.executeRaw(sql)(identity), 10.seconds)
-
-  /** Counts rows through a completely independent connection — proves visibility beyond the pool that wrote them. */
-  private def countFromFreshConnection(table: String): Int = {
-    val conn = DriverManager.getConnection(H2.jdbcUrl(dbName), "sa", "")
-    try {
-      val rs = conn.createStatement().executeQuery(s"SELECT COUNT(*) FROM $table")
-      rs.next() shouldBe true
-      rs.getInt(1)
-    } finally conn.close()
   }
 
   "JDBCClient.apply" should "reject a pool configured with autoCommit=false and name the supported alternatives" in {

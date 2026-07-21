@@ -1,12 +1,10 @@
 package org.galaxio.gatling.jdbc.db
 
-import org.galaxio.gatling.jdbc.db.testsupport.H2
-import org.scalatest.BeforeAndAfterAll
+import org.galaxio.gatling.jdbc.db.testsupport.H2ClientSpecFixture
 import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import java.util.concurrent.Executors
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 import scala.util.Try
@@ -14,12 +12,9 @@ import scala.util.Try
 /** Regression spec for issue #123 (US2): a result containing the same label twice must never silently drop a value — the
   * operation fails with an explicit error naming the duplicated label(s), before any row is mapped.
   */
-class DuplicateColumnLabelSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class DuplicateColumnLabelSpec extends AnyFlatSpec with Matchers with H2ClientSpecFixture {
 
-  private val dbName       = "dup_label_spec"
-  private val dataSource   = H2.dataSource(dbName, 2)
-  private val blockingPool = Executors.newFixedThreadPool(2)
-  private val client       = JDBCClient(dataSource, blockingPool)
+  override protected val dbName = "dup_label_spec"
 
   override def beforeAll(): Unit = {
     exec("CREATE TABLE IF NOT EXISTS dup_a (id INT PRIMARY KEY, name VARCHAR(50))")
@@ -29,12 +24,6 @@ class DuplicateColumnLabelSpec extends AnyFlatSpec with Matchers with BeforeAndA
     exec("INSERT INTO dup_a (id, name) VALUES (1, 'alice')")
     exec("INSERT INTO dup_b (id, a_id) VALUES (10, 1)")
   }
-
-  override def afterAll(): Unit =
-    client.close()
-
-  private def exec(sql: String): Unit =
-    Await.result(client.executeRaw(sql)(identity), 10.seconds)
 
   private def select(sql: String): Try[List[Map[String, Any]]] =
     Await.result(client.executeSelect(sql, Seq.empty)(identity), 10.seconds)
