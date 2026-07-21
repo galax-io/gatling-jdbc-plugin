@@ -1,7 +1,6 @@
 package org.galaxio.gatling.jdbc.db
 
-import org.galaxio.gatling.jdbc.db.testsupport.{H2, RowReadCountingDataSource}
-import org.scalatest.BeforeAndAfterAll
+import org.galaxio.gatling.jdbc.db.testsupport.{H2, H2ClientSpecFixture, RowReadCountingDataSource}
 import org.scalatest.TryValues.convertTryToSuccessOrFailure
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -14,15 +13,9 @@ import scala.util.Try
 /** Regression spec for issue #86 (US4), client level: the discard path drains without retaining rows (SC-005 at the spec's
   * 1M-row scale), and the `maxRows` cap fails loud on overflow on both the discard and materializing paths.
   */
-class BoundedRetrievalSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class BoundedRetrievalSpec extends AnyFlatSpec with Matchers with H2ClientSpecFixture {
 
-  private val dbName       = "bounded_retrieval"
-  private val dataSource   = H2.dataSource(dbName, 2)
-  private val blockingPool = Executors.newFixedThreadPool(2)
-  private val client       = JDBCClient(dataSource, blockingPool)
-
-  override def afterAll(): Unit =
-    client.close()
+  override protected val dbName = "bounded_retrieval"
 
   private def discard(sql: String, maxRows: Option[Int]): Try[Long] =
     Await.result(client.executeSelectDiscard(sql, Seq.empty, maxRows)(identity), 60.seconds)
