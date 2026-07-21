@@ -15,8 +15,12 @@ JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. 
 - [Database Driver Dependencies](#database-driver-dependencies)
 - [Quick Start](#quick-start)
 - [Protocol Configuration](#protocol-configuration)
+- [Transaction Control](#transaction-control)
 - [Actions](#actions)
+- [Result Limits](#result-limits)
+- [Identifier Rules](#identifier-rules)
 - [Checks](#checks)
+- [Result Keys and Values](#result-keys-and-values)
 - [Session Variables](#session-variables)
 - [Examples](#examples)
 - [Contributing](#contributing)
@@ -249,6 +253,40 @@ hikariConfig.setMaximumPoolSize(16)
 val dataBase = DB.hikariConfig(hikariConfig)
 ```
 
+> **`autoCommit=false` is rejected at startup.** See [Transaction Control](#transaction-control) for why, and for the supported transaction patterns.
+
+## Transaction Control
+
+The plugin requires auto-commit connections and **rejects a `HikariConfig` with `setAutoCommit(false)` at simulation startup** with a clear error. This is deliberate:
+
+- Every action acquires a connection from the pool and returns it when the action completes. Connections are **not pinned to virtual users** — your next action runs on whatever connection the pool hands out.
+- A JDBC transaction lives on one connection. A later `rawSql("COMMIT")` therefore can never reach an earlier action's transaction.
+- HikariCP **rolls back dirty connections on checkin**, between any two actions. With `autoCommit=false`, every write would report OK while persisting nothing — green statistics over an empty database.
+
+Two transaction patterns are supported:
+
+**1. `batch` — accumulate, then commit as one transaction.** The plugin takes one connection, disables auto-commit on it, executes all statements, then commits (or rolls back on failure) and restores the connection state:
+
+```scala
+jdbc("batch insert").batch(
+  insertInto("users", Columns("id", "name")).values("id" -> 1, "name" -> "Alice"),
+  update("users").set("name" -> "Bob").where("id = 2"),
+)
+```
+
+**2. A single `rawSql` action containing the whole transaction.** One action = one connection = one transaction:
+
+```scala
+jdbc("manual tx").rawSql("""
+  BEGIN;
+  INSERT INTO audit_log (event) VALUES ('start');
+  UPDATE accounts SET balance = balance - 10 WHERE id = 1;
+  COMMIT;
+""")
+```
+
+Transactions spanning **multiple actions** of a scenario are not supported — they never worked (see above) and the startup rejection makes that loud instead of silent.
+
 ## Actions
 
 ### Query
@@ -362,6 +400,43 @@ jdbc("call procedure")
 
 After execution, OUT parameter values are available in the session via `#{outResult}`.
 
+## Result Limits
+
+By default a query with checks materializes the full result. Two mechanisms bound memory on the load generator:
+
+- **No checks → nothing retained.** A query without checks drains the result (the database still does the full work and timing is still measured) but keeps no rows — memory stays flat regardless of result size. On PostgreSQL the drain runs in a plugin-managed read transaction with a forward-only cursor so the driver actually streams.
+- **`maxRows(n)` — opt-in cap.** Exceeding the cap fails the request (KO naming the cap) instead of silently truncating — truncated check input would be silently wrong data. The cap applies on **every** path, with and without checks.
+
+```scala
+jdbc("bounded select")
+  .query("SELECT * FROM big_table")
+  .maxRows(10000)
+  .check(simpleCheck(_.nonEmpty))
+```
+
+```java
+jdbc("bounded select")
+    .query("SELECT * FROM big_table")
+    .maxRows(10000)
+    .check(simpleCheck(simpleCheckType.NonEmpty));
+```
+
+## Identifier Rules
+
+Table names (which may come from feeders) and column names in `insertInto`, batch inserts, and batch updates are validated **before any SQL is assembled**. An invalid identifier fails that request with the rejected value quoted in the message — nothing is sent to the database.
+
+Accepted forms, up to 3 dot-separated segments (`catalog.schema.object`):
+
+| Form | Example | Notes |
+|------|---------|-------|
+| Unquoted | `users`, `public.users`, `_tmp$2` | `[A-Za-z_][A-Za-z0-9_$]{0,127}` per segment |
+| ANSI-quoted | `"Order Details"`, `"say ""hi"""` | doubling is the only escape |
+| Backtick-quoted | `` `weird-name` `` | MySQL-family; doubling is the only escape |
+
+`{`, `}` and NUL are rejected everywhere — including inside quotes — because column names feed the `{param}` placeholder interpolator. Reserved words, spaces, punctuation, and case-significant names must be quoted; quoted segments pass through verbatim (case semantics are the engine's).
+
+`where(...)` fragments and `rawSql` are deliberately **not** validated — they are user-authored SQL by contract.
+
 ## Checks
 
 | Check | Description |
@@ -392,6 +467,33 @@ jdbc("select users")
         allResults().saveAs("rows")
     );
 ```
+
+## Result Keys and Values
+
+### Keys are column labels
+
+Result rows are keyed by the **column label as written in the query** — the alias when `AS` is present, the column name otherwise — with no case normalization. Unquoted identifiers surface in the engine's reported case:
+
+| Engine | `SELECT id AS customer_id …` yields key |
+|--------|------------------------------------------|
+| H2 | `CUSTOMER_ID` (upper-cases unquoted labels) |
+| PostgreSQL | `customer_id` (lower-cases unquoted labels) |
+| any | quoted alias `AS "customer_id"` → `customer_id` verbatim |
+
+A result carrying the **same label twice** (e.g. a JOIN selecting two `id` columns) fails the request with `DuplicateColumnLabelException` naming every duplicate — a duplicate would silently overwrite a value. Workaround: alias each column uniquely.
+
+### Values are self-contained
+
+Driver-managed values are copied while the result is open, so checks can read them after the operation completes:
+
+| Column type | Session value |
+|-------------|---------------|
+| `BLOB` | `Array[Byte]` / `byte[]` |
+| `CLOB` / `NCLOB` | `String` |
+| `XML` (`SQLXML`) | `String` |
+| SQL `ARRAY` | `Vector` (elements converted recursively) |
+| SQL `NULL` | `null` |
+| everything else | the driver's `getObject` value, unchanged |
 
 ## Session Variables
 
