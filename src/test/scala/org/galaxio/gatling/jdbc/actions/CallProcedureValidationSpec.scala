@@ -62,6 +62,9 @@ class CallProcedureValidationSpec extends AnyFlatSpec with Matchers with JdbcAct
     failed shouldBe true
     stats.crashes should have size 1 // crash KO path — rejected before SQL assembly, not a driver error
     stats.crashes.head.error should not be empty
+    // the feeder-derived injection payload must NOT reach shared stats/reports (spec 005 FR-007)
+    stats.crashes.head.error should not include "DROP TABLE"
+    stats.crashes.head.error should include("Invalid SQL identifier rejected")
     stats.responses should have size 1
     stats.responses.head.status shouldBe KO
 

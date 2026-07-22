@@ -6,7 +6,8 @@ import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
 import io.gatling.core.structure.ScenarioContext
 import org.galaxio.gatling.jdbc.db.{JDBCClient, SqlIdentifier}
-import org.galaxio.gatling.jdbc.protocol.JdbcProtocol
+import org.galaxio.gatling.jdbc.protocol.{JdbcProtocol, Redaction}
+import org.slf4j.LoggerFactory
 
 trait ActionBase { self: ChainableAction =>
   val ctx: ScenarioContext
@@ -14,13 +15,24 @@ trait ActionBase { self: ChainableAction =>
   private val jdbcComponents         = ctx.protocolComponentsRegistry.components(JdbcProtocol.jdbcProtocolKey)
   protected val dbClient: JDBCClient = jdbcComponents.client
 
+  // #126: the raw throwable — message, suppressed detail, stack — goes here and only here. Enabling this logger at DEBUG is the
+  // documented opt-in for full diagnostics; the stats/report path never carries raw driver text.
+  private val rawErrorLog = LoggerFactory.getLogger("org.galaxio.gatling.jdbc.actions.ActionBase")
+
   protected def now: Long = ctx.coreComponents.clock.nowMillis
 
-  /** Validates one identifier against the allowlist grammar (#124); failure flows to the crash KO path, no SQL is built. */
+  /** Validates one identifier against the allowlist grammar (#124); failure flows to the crash KO path, no SQL is built.
+    *
+    * The rejected value is feeder-derived, so the failure surfaced to the crash/report path is value-free (#126, spec 005
+    * FR-007): `safeMessage` carries the grammar hint without the input, while the full message (with the value) is logged at
+    * DEBUG for an engineer who opts in.
+    */
   protected def validIdentifier(value: String): Validation[String] =
     SqlIdentifier.validate(value) match {
       case Right(identifier) => identifier.success
-      case Left(error)       => error.getMessage.failure
+      case Left(error)       =>
+        if (rawErrorLog.isDebugEnabled) rawErrorLog.debug("Rejected invalid SQL identifier", error)
+        error.safeMessage.failure
     }
 
   /** Validates a group of static identifiers (column names) in declaration order. */
@@ -36,13 +48,13 @@ trait ActionBase { self: ChainableAction =>
 
   /** KO callback for a failed JDBC execution: mark the session failed and log the response.
     *
-    * Cleanup failures (rollback, statement/connection close) are attached to the primary exception via `addSuppressed` (#84) so
-    * the exception object carries the full picture — but nothing else in this codebase logs a `Throwable`, so without this the
-    * suppressed detail would never reach the simulation report or any log a triaging engineer can see (spec 003 US3: "an
-    * engineer ... sees the original database error ... even when cleanup ... also fails"). A bounded summary is folded into the
-    * KO message instead of the raw exception, to avoid an unbounded report string.
+    * The stats/report message is rebuilt from structured, value-free fields (#126) — class, SQLState, vendor code, plus a
+    * class-only summary of any suppressed cleanup failures (#84) — so no feeder value can leak into a shared artifact. The full
+    * raw throwable (message, suppressed detail, stack) is logged at DEBUG on `rawErrorLog`, the documented opt-in a triaging
+    * engineer enables to see the original database error (spec 003 US3, now via the DEBUG channel rather than the report).
     */
-  protected def reportError(session: Session, startTime: Long, requestName: String, exception: Throwable): Unit =
+  protected def reportError(session: Session, startTime: Long, requestName: String, exception: Throwable): Unit = {
+    if (rawErrorLog.isDebugEnabled) rawErrorLog.debug(s"JDBC request '$requestName' failed", exception)
     executeNext(
       session.markAsFailed,
       startTime,
@@ -51,26 +63,8 @@ trait ActionBase { self: ChainableAction =>
       next,
       requestName,
       Some("ERROR"),
-      Some(messageWithSuppressed(exception)),
+      Some(Redaction.koMessage(exception)),
     )
-
-  private val MaxSuppressedShown  = 3
-  private val MaxSuppressedMsgLen = 200
-
-  private def messageWithSuppressed(exception: Throwable): String = {
-    val suppressed = exception.getSuppressed
-    if (suppressed.isEmpty) exception.getMessage
-    else {
-      val summary = suppressed
-        .take(MaxSuppressedShown)
-        .map { s =>
-          val msg = Option(s.getMessage).getOrElse("")
-          s"${s.getClass.getSimpleName}: ${msg.take(MaxSuppressedMsgLen)}"
-        }
-        .mkString("; ")
-      val more    = if (suppressed.length > MaxSuppressedShown) s" (+${suppressed.length - MaxSuppressedShown} more)" else ""
-      s"${exception.getMessage} [cleanup also failed: $summary$more]"
-    }
   }
 
   /** Validation crash handler: log a request crash and emit a KO response for the unresolved request.

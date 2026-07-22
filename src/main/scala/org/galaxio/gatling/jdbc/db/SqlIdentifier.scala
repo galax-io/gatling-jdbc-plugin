@@ -1,11 +1,20 @@
 package org.galaxio.gatling.jdbc.db
 
-/** Thrown when a table/column identifier fails [[SqlIdentifier.validate]] (#124). */
-final class InvalidSqlIdentifierException(val value: String) extends IllegalArgumentException(
-      s"Invalid SQL identifier '$value'. Accepted forms: unquoted [A-Za-z_][A-Za-z0-9_$$]{0,127}, " +
-        "ANSI-quoted \"...\" (escape \" by doubling) or backtick-quoted `...` (escape ` by doubling), " +
-        "joined by '.' into at most 3 segments; '{', '}' and NUL are never allowed.",
-    )
+/** Thrown when a table/column/procedure identifier fails [[SqlIdentifier.validate]] (#124). The full message embeds the
+  * rejected `value` for DEBUG diagnostics; [[safeMessage]] is the value-free variant recorded on the KO/report path (#126, spec
+  * 005 FR-007) — the rejected value is feeder-derived and must never reach shared stats/reports.
+  */
+final class InvalidSqlIdentifierException(val value: String)
+    extends IllegalArgumentException(s"Invalid SQL identifier '$value'. ${InvalidSqlIdentifierException.AcceptedForms}") {
+  def safeMessage: String = s"Invalid SQL identifier rejected. ${InvalidSqlIdentifierException.AcceptedForms}"
+}
+
+object InvalidSqlIdentifierException {
+  private[db] val AcceptedForms: String =
+    "Accepted forms: unquoted [A-Za-z_][A-Za-z0-9_$]{0,127}, " +
+      "ANSI-quoted \"...\" (escape \" by doubling) or backtick-quoted `...` (escape ` by doubling), " +
+      "joined by '.' into at most 3 segments; '{', '}' and NUL are never allowed."
+}
 
 /** Allowlist validation for SQL identifiers entering statement text (#124, spec 003 identifier-grammar contract).
   *

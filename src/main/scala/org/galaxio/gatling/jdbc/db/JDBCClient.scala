@@ -202,8 +202,7 @@ class JDBCClient(pool: HikariDataSource, val blockingPool: ExecutorService, quer
     consumer(result)
   }
 
-  private def maxRowsExceeded(cap: Int): IllegalStateException =
-    new IllegalStateException(s"Query result exceeded the configured maxRows cap of $cap; failing instead of truncating")
+  private def maxRowsExceeded(cap: Int): IllegalStateException = new MaxRowsExceededException(cap)
 
   /** Best-effort driver-side transfer guard; correctness always comes from counting while reading. Skipped at Int.MaxValue —
     * `cap + 1` would overflow, and a list cannot hold more rows anyway. `setLargeMaxRows` is deliberately NOT used: drivers
