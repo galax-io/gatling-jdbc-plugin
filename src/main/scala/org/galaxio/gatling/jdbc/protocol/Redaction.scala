@@ -15,20 +15,37 @@ private[jdbc] object Redaction {
   def isSecretProperty(name: String): Boolean = {
     if (name == null) false
     else {
-      val normalized = name.toLowerCase.replace("-", "").replace("_", "")
+      // Locale.ROOT: a locale-sensitive lowercase (e.g. Turkish) would turn APIKEY's 'I' into dotless 'ı' and miss the pattern
+      val normalized = name.toLowerCase(java.util.Locale.ROOT).replace("-", "").replace("_", "")
       SecretNamePatterns.exists(normalized.contains)
     }
   }
 
-  /** Redacts `user:pass@` credentials embedded in a connection URL. URLs without credentials pass through unchanged; anything
-    * that does not parse as a credential-bearing authority is returned verbatim (never throws — this runs on logging paths).
+  private def quote(s: String): String = java.util.regex.Matcher.quoteReplacement(s)
+
+  // (a) RFC authority userinfo: "//user:password@host". The password runs to the LAST '@' before the authority terminator
+  //     ('/', '?', ';', or end), so passwords containing '@' are still fully masked; '/','?',';' cannot appear unencoded in it.
+  private val AuthorityCreds = "(//[^/:@\\s]+):[^/?;\\s]*@".r
+  // (b) key=value credentials in query strings or JDBC property lists: "?password=", "&password=", ";password=".
+  private val UrlParam       = "([?&;])([^=&;\\s]+)=([^&;\\s]*)".r
+  // (c) Oracle thin form: "…:user/password@host".
+  private val OracleCreds    = "([:/][A-Za-z0-9_.]+)/[^/@\\s]+@".r
+
+  /** Redacts credentials embedded in a connection URL across the forms JDBC drivers actually use — authority `user:pass@`
+    * (incl. passwords with special characters), `key=value` query/property credentials (`?password=`, `;password=`), and the
+    * Oracle thin `user/pass@` form. URLs without credentials pass through unchanged; never throws — this runs on logging paths.
     */
   def redactUrl(url: String): String = {
     if (url == null) "<null url>"
     else {
-      // match "//user:password@" (the credential portion of an authority) and mask only the password
-      val CredsInAuthority = "(//[^/:@\\s]+):([^/@\\s]+)@".r
-      CredsInAuthority.replaceAllIn(url, m => java.util.regex.Matcher.quoteReplacement(s"${m.group(1)}:$Mask@"))
+      var out = url
+      out = AuthorityCreds.replaceAllIn(out, m => quote(s"${m.group(1)}:$Mask@"))
+      out = UrlParam.replaceAllIn(
+        out,
+        m => quote(if (isSecretProperty(m.group(2))) s"${m.group(1)}${m.group(2)}=$Mask" else m.matched),
+      )
+      out = OracleCreds.replaceAllIn(out, m => quote(s"${m.group(1)}/$Mask@"))
+      out
     }
   }
 
@@ -62,7 +79,13 @@ private[jdbc] object Redaction {
       s"${t.getClass.getName}: ${safe.getMessage}"
     case sql: java.sql.SQLException                              =>
       s"${t.getClass.getName} [SQLState=${Option(sql.getSQLState).getOrElse("")}, code=${sql.getErrorCode}]"
-    case _                                                       => t.getClass.getName
+    case _                                                       =>
+      // a driver/pool may wrap the SQLException as a cause — unwrap one level to keep the structured detail, value-free
+      t.getCause match {
+        case null                => t.getClass.getName
+        case cause if cause eq t => t.getClass.getName
+        case cause               => s"${t.getClass.getName} caused by ${describe(cause)}"
+      }
   }
 
   private def bound(s: String): String =

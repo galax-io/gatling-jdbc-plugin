@@ -2,8 +2,10 @@ package org.galaxio.gatling.jdbc.db.testsupport
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.classic.{Level, Logger}
-import ch.qos.logback.core.read.ListAppender
+import ch.qos.logback.core.AppenderBase
 import org.slf4j.LoggerFactory
+
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Test-only logback capture: attach an in-memory appender to named loggers, force them to a level, run a block, and return
   * every line the code under test logged. Used by the redaction / error-sanitization specs (#91, #92, #126) to assert that
@@ -11,13 +13,26 @@ import org.slf4j.LoggerFactory
   */
 object LogCapture {
 
+  // ScalaTest runs suites in parallel; capture mutates global logback logger levels, so two concurrent captures on the same
+  // logger would race on restore. Serialize the whole capture region — bodies are short and few, so this costs nothing.
+  private val lock = new AnyRef
+
+  /** Backed by a CopyOnWriteArrayList: the attached logger may be shared with other parallel suites (e.g. `com.zaxxer.hikari`),
+    * so appends from their threads must be safe to interleave with our iteration — a plain ArrayList would throw
+    * ConcurrentModificationException.
+    */
+  private final class SafeAppender extends AppenderBase[ILoggingEvent] {
+    val events                                      = new CopyOnWriteArrayList[ILoggingEvent]()
+    override def append(event: ILoggingEvent): Unit = events.add(event)
+  }
+
   /** Runs `body` with a capturing appender attached to each named logger (forced to `level`), then always detaches and restores
     * the previous level. Returns the formatted messages captured during `body`.
     */
-  def capture(loggerNames: Seq[String], level: Level = Level.DEBUG)(body: => Unit): Seq[String] = {
+  def capture(loggerNames: Seq[String], level: Level = Level.DEBUG)(body: => Unit): Seq[String] = lock.synchronized {
     val ctx      = LoggerFactory.getILoggerFactory
     val loggers  = loggerNames.map(ctx.getLogger).collect { case l: Logger => l }
-    val appender = new ListAppender[ILoggingEvent]()
+    val appender = new SafeAppender()
     appender.start()
 
     val previous = loggers.map(l => (l, l.getLevel, l.isAdditive))
@@ -26,11 +41,9 @@ object LogCapture {
       l.setLevel(level)
     }
 
-    try {
-      body
-      import scala.jdk.CollectionConverters._
-      appender.list.asScala.toList.map(renderEvent)
-    } finally {
+    try body
+    finally {
+      // detach and stop BEFORE reading, so no further events can arrive while we render
       previous.foreach { case (l, lvl, additive) =>
         l.detachAppender(appender)
         l.setLevel(lvl)
@@ -38,6 +51,9 @@ object LogCapture {
       }
       appender.stop()
     }
+
+    import scala.jdk.CollectionConverters._
+    appender.events.asScala.toList.map(renderEvent)
   }
 
   /** Convenience for a single logger. */

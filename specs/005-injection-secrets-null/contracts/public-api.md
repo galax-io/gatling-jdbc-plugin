@@ -49,7 +49,7 @@ public BatchUpdateAction where(String whereClause, Map<String, Object> params)
 
 ### `JdbcProtocolBuilderConnectionSettingsStep` — #91
 
-No signature change; `apply`/`copy`/`unapply` untouched. **String-form contract added**: `toString` never contains the password value; URLs render with credentials as `user:***@`. This string form is diagnostic output, not parseable API.
+No signature change; `apply`/`copy`/`unapply` untouched. **String-form contract added**: `toString` never contains the password value; URL credentials are redacted across the JDBC URL forms drivers use — authority `//user:pass@` (incl. special-character passwords), `key=value` query/property credentials (`?password=`, `;password=`), and the Oracle thin `user/pass@` form. This string form is diagnostic output, not parseable API.
 
 ### `JdbcProtocol` components — #92
 

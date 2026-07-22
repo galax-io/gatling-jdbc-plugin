@@ -55,7 +55,7 @@ New `private[jdbc]` object; the only unit allowed to turn sensitive material int
 
 | Function | Contract |
 |---|---|
-| `redactUrl(url)` | `scheme://user:pass@host…` → `scheme://user:***@host…`; URLs without credentials pass through unchanged; malformed URLs returned as `<redacted url>` (never throw on the logging path) |
+| `redactUrl(url)` | masks credentials across the JDBC URL forms drivers use: authority `//user:pass@host` (incl. passwords with special characters, masked up to the last `@` before the authority terminator), `key=value` query/property credentials whose key `isSecretProperty` (`?password=`, `&password=`, `;password=`), and the Oracle thin `user/pass@host` form. URLs without credentials pass through unchanged; never throws on the logging path (a `null` url returns `<null url>`) |
 | `isSecretProperty(name)` | case-insensitive contains-match over `password`, `secret`, `token`, `passphrase`, `credential`, `apikey` (also matching `api-key`/`api_key` via separator-stripping). Names matching no pattern are outside the redaction guarantee — documented boundary (README security note, T018) |
 | `koMessage(throwable)` | the **structured error grammar** below; total (never throws), bounded |
 
@@ -71,7 +71,9 @@ opaque-form  = ClassName                                            ; everything
 suppressed-summary = first-3 as sql-form/opaque-form, "; "-joined, "(+N more)" tail
 ```
 
-Hard bound: total length ≤ 512 chars (constant), applied last; when the bound truncates, the message ends with `…` so truncation is visible (spec edge case: "stable and clearly marked"). Allowlist starts with the plugin's own timeout/pool-config exceptions; `InvalidSqlIdentifierException` is **not** allowlisted (its message embeds the offending value) — it reports as `opaque-form` on the KO path while the full message stays on the DEBUG channel. Raw-detail channel: the complete `Throwable` (message + suppressed + stack) logged at DEBUG on the action logger at the moment `koMessage` is built — logback level config is the opt-in switch (spec US2 scenario 5).
+Hard bound: total length ≤ 512 chars (constant), applied last; when the bound truncates, the message ends with `…` so truncation is visible (spec edge case: "stable and clearly marked"). `describe` unwraps one level of `getCause` for a non-SQL wrapper so a driver/pool-wrapped `SQLException` still contributes its structured `SQLState`/code (value-free); a self-referential cause terminates at the class name.
+
+Identifier rejection (`InvalidSqlIdentifierException`) does **not** flow through `koMessage` — it is a `Validation` failure surfaced on the crash path (`crashOnFailure`). Its `safeMessage` (grammar hint, **no** rejected value) is what reaches stats/reports; the full message with the value is logged at DEBUG on `org.galaxio.gatling.jdbc.actions.ActionBase` (spec 005 FR-007). Allowlist starts with the plugin's own timeout/pool-config exceptions; `InvalidSqlIdentifierException` is **not** allowlisted (its message embeds the offending value) — it reports as `opaque-form` on the KO path while the full message stays on the DEBUG channel. Raw-detail channel: the complete `Throwable` (message + suppressed + stack) logged at DEBUG on the action logger at the moment `koMessage` is built — logback level config is the opt-in switch (spec US2 scenario 5).
 
 Config-side rules: `JdbcProtocolBuilderConnectionSettingsStep.toString` renders `password=*****` and `url=redactUrl(url)`; `JdbcProtocol.newComponents` applies `isSecretProperty` to custom data-source properties — redact-or-warn scope fixed by the R5 probe's failing assertions.
 
