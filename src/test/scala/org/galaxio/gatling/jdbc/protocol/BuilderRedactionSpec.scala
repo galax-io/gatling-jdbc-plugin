@@ -25,6 +25,20 @@ class BuilderRedactionSpec extends AnyFlatSpec with Matchers {
     s.toString should include(s"usr:${Redaction.Mask}@")
   }
 
+  it should "redact credentials across the JDBC URL forms drivers actually use" in {
+    // (a) query-parameter credentials — the dominant "creds in URL" form
+    Redaction.redactUrl(s"jdbc:postgresql://host:5432/db?user=admin&password=$urlMarker") should not include urlMarker
+    Redaction.redactUrl(s"jdbc:mysql://host/db?password=$urlMarker") should not include urlMarker
+    // (b) SQL Server semicolon property list
+    Redaction.redactUrl(s"jdbc:sqlserver://host;user=u;password=$urlMarker") should not include urlMarker
+    // (c) Oracle thin user/password@ form
+    Redaction.redactUrl(s"jdbc:oracle:thin:usr/$urlMarker@host:1521:orcl") should not include urlMarker
+    // (d) authority password containing special characters
+    Redaction.redactUrl(s"jdbc:postgresql://usr:p@$urlMarker@host/db") should not include urlMarker
+    // a non-secret query param stays visible (targeted, not a blanket wipe)
+    Redaction.redactUrl("jdbc:postgresql://host/db?applicationName=loadtest") should include("applicationName=loadtest")
+  }
+
   "copy and apply" should "still behave as a normal case class" in {
     val s        = step()
     val recopied = s.copy(username = "other")
