@@ -1,37 +1,34 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (uninitialized template) → 1.0.0
-Bump rationale: Initial ratification. The file previously contained only unfilled
-placeholder tokens; this is the first concrete, adopted constitution (MAJOR baseline).
+Version change: 1.0.0 → 1.1.0
+Bump rationale: MINOR — Principle I materially expanded with a bounded
+"corruption & injection carve-out" permitting defect-driven runtime-behavior
+changes in MINOR releases under four explicit conditions. No principle removed
+or redefined; the default (behavior changes ⇒ MAJOR) stands.
 
-Modified principles (placeholder → concrete):
-- [PRINCIPLE_1_NAME]  → I. Backward Compatibility (NON-NEGOTIABLE)
-- [PRINCIPLE_2_NAME]  → II. Test-First With Real Databases
-- [PRINCIPLE_3_NAME]  → III. Resource & Concurrency Safety
-- [PRINCIPLE_4_NAME]  → IV. Spec-Driven, Semantic Delivery
-- [PRINCIPLE_5_NAME]  → V. Idiomatic Simplicity
+Modified principles:
+- I. Backward Compatibility (NON-NEGOTIABLE) — unchanged title; added carve-out
+  bullet codifying the maintainer decision of 2026-07-22 (milestone 8, spec
+  005-injection-secrets-null: #93 NULL-sentinel removal, #125 EL-in-WHERE
+  rejection ship as v1.5.0 minor).
 
-Added sections:
-- Build, Format & Dependency Discipline (was [SECTION_2_NAME])
-- Release Discipline (was [SECTION_3_NAME])
-- Governance (concrete rules)
-
+Added sections: none
 Removed sections: none
 
 Templates alignment:
-- .specify/templates/plan-template.md      ✅ compatible — "Constitution Check" uses a
-  dynamic per-feature gate ("[Gates determined based on constitution file]"); no hardcode
-  needed. Its gate is satisfied by principles I–V.
-- .specify/templates/spec-template.md       ✅ compatible — no principle conflict; mandatory
-  sections unchanged by this constitution.
-- .specify/templates/tasks-template.md      ✅ compatible — TDD-first ordering and
-  "commit after each task" already match Principles II and IV.
-- .specify/templates/commands/*.md          ✅ n/a — directory absent; no agent-specific
-  references to reconcile.
-- AGENTS.md (runtime guidance)              ✅ source of truth for these principles; no edit.
+- .specify/templates/plan-template.md   ✅ compatible — "Constitution Check" is a
+  dynamic per-feature gate; carve-out is evaluated per feature, no hardcode.
+- .specify/templates/spec-template.md   ✅ compatible — no mandatory-section change.
+- .specify/templates/tasks-template.md  ✅ compatible — TDD-first ordering already
+  satisfies carve-out condition (d).
+- specs/005-injection-secrets-null/plan.md ✅ updated in the same change —
+  Constitution Check row I and Complexity Tracking now cite the carve-out.
+- AGENTS.md (runtime guidance)          ✅ consistent — its "preserve backward
+  compat" boundary remains the default; the constitution supersedes on the
+  bounded exception (see Governance precedence). No AGENTS.md edit required.
 
-Follow-up TODOs: none. RATIFICATION_DATE set to first-adoption date (2026-07-12).
+Follow-up TODOs: none.
 -->
 
 # Gatling JDBC Plugin Constitution
@@ -50,9 +47,25 @@ Changes MUST preserve existing signatures, default values, and runtime semantics
   default path; deprecate before removing.
 - Treat Scala DSL, Java builders, defaults, and plugin semantics as compatibility-sensitive
   by default — when in doubt, assume a consumer depends on it.
+- **Corruption & injection carve-out**: a runtime-behavior change whose sole effect is to
+  stop silent data corruption, secret/PII disclosure, or execution of unintended SQL MAY
+  ship in a MINOR release as a plain `fix` commit (no `!`/`BREAKING CHANGE` marker),
+  provided ALL of the following hold:
+  (a) the defect makes current behavior misrepresent or damage what the user specified;
+  (b) an explicit written justification lands in the feature plan (Complexity Tracking)
+      and in the PR body;
+  (c) a migration note naming the replacement path ships in the same release's release
+      notes;
+  (d) a regression test pins the corrected behavior in the same commit.
+  Bug-for-bug compatibility is not a published contract. The carve-out NEVER covers
+  signature or API removals — those remain MAJOR-only.
+  *Precedent*: milestone 8 / spec `005-injection-secrets-null` (#93 `"NULL"`-sentinel
+  removal, #125 EL-in-`where` rejection), decided 2026-07-22, shipped as v1.5.0.
 
 **Rationale**: This plugin is consumed by external performance suites that cannot be
 refactored in lockstep; silent behavior drift corrupts load-test results and erodes trust.
+The carve-out exists because preserving a corrupting or injectable behavior in the name of
+compatibility protects the defect, not the consumer — the same trust argument, inverted.
 
 ### II. Test-First With Real Databases
 
@@ -132,7 +145,8 @@ obscures blocking or resource behavior is a liability, not an asset.
 - Trunk-based with `release/*` branches cut from `main`. Releases are manual and tag-driven:
   CI only tests; `release.yml` runs only on `v*` tags.
 - The version comes from the tag (dynver) and MUST be chosen from the Conventional Commits
-  since the last tag (`feat` → minor, `!`/`BREAKING CHANGE` → major, else patch).
+  since the last tag (`feat` → minor, `!`/`BREAKING CHANGE` → major, else patch); a change
+  shipped under the Principle I carve-out is a `fix` and never forces MAJOR by itself.
 - Tags are allowed only on `main` or `release/*`; stray tags are rejected.
 - A version number is NEVER reused and a published release tag is NEVER deleted.
 - A release milestone is tag-ready only when every issue in it is closed and every PR merged;
@@ -153,4 +167,4 @@ precedence is: this constitution, then `AGENTS.md`, then other docs.
 - `AGENTS.md` remains the day-to-day runtime development guide; it MUST stay consistent with
   this constitution, and a divergence is a defect to fix in the constitution or in `AGENTS.md`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-12 | **Last Amended**: 2026-07-12
+**Version**: 1.1.0 | **Ratified**: 2026-07-12 | **Last Amended**: 2026-07-22
