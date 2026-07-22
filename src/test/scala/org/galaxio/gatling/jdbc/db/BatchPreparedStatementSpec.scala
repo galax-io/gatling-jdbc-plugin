@@ -104,11 +104,9 @@ class BatchPreparedStatementSpec extends AsyncFlatSpec with Matchers with Before
     }
   }
 
-  // withParamsMap treats the string literal "NULL" as a sentinel that maps to NullParam (SQL NULL).
-  // This is a convention of the withParamsMap API: it is impossible to insert the literal four-character
-  // string "NULL" via withParamsMap; use withParams(... -> NullParam) for explicit NULL, or
-  // withParams(... -> StrParam("NULL")) if you genuinely need the string.
-  it should "treat string literal 'NULL' as SQL NULL per withParamsMap convention" in {
+  // #93: the "NULL" string sentinel was removed. The literal four-character string "NULL" is now stored as text through
+  // withParamsMap; only JVM null or an explicit NullParam produces SQL NULL.
+  it should "store the literal string 'NULL' as text, not SQL NULL" in {
     clearTable()
     val queries = Seq(
       SQL("INSERT INTO batch_items (id, name, flag, val) VALUES ({id},{name},{flag},{val})")
@@ -116,7 +114,7 @@ class BatchPreparedStatementSpec extends AsyncFlatSpec with Matchers with Before
     )
     client.batch(queries) { result =>
       result.success.value shouldBe Array(1)
-      fetchName(4) shouldBe null
+      fetchName(4) shouldBe "NULL"
     }
   }
 
