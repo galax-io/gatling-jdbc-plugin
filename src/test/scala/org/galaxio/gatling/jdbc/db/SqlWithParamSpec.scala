@@ -59,9 +59,22 @@ class SqlWithParamSpec extends AnyFlatSpec with Matchers {
     swp.params should contain("x" -> NullParam)
   }
 
-  it should "map the sentinel string 'NULL' to NullParam" in {
+  // #93: the "NULL" string sentinel was removed — the literal text "NULL" is now stored as text, never SQL NULL. Only JVM null
+  // or an explicit NullParam produces SQL NULL.
+  it should "map the literal string 'NULL' to StrParam, not NullParam" in {
     val swp = SQL("SELECT {x}").withParamsMap(Map("x" -> "NULL"))
+    swp.params should contain("x" -> StrParam("NULL"))
+  }
+
+  // #93 hardening: a ParamVal resolved through the map path must pass through, not become StrParam("NullParam")
+  it should "pass an already-bound ParamVal (NullParam) through unchanged" in {
+    val swp = SQL("SELECT {x}").withParamsMap(Map("x" -> NullParam))
     swp.params should contain("x" -> NullParam)
+  }
+
+  it should "pass an already-bound ParamVal (StrParam) through unchanged" in {
+    val swp = SQL("SELECT {x}").withParamsMap(Map("x" -> StrParam("kept")))
+    swp.params should contain("x" -> StrParam("kept"))
   }
 
   it should "fall back to StrParam(toString) for unknown types" in {
