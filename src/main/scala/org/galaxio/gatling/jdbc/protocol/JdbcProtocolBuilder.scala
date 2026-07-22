@@ -66,6 +66,15 @@ final case class JdbcProtocolBuilderConnectionSettingsStep(
     require(newValue >= Duration.Zero, "queryTimeout must be non-negative")
     this.copy(queryTimeout = Some(newValue))
   }
+
+  /** #91: the synthesized case-class `toString` would print the password and any URL-embedded credentials wherever this step is
+    * logged or folded into an exception. Render the password masked and the URL credential-redacted; every other field is
+    * reproduced as-is so diagnostics stay useful. `apply`/`copy`/`unapply` are untouched.
+    */
+  override def toString: String =
+    s"JdbcProtocolBuilderConnectionSettingsStep(url=${Redaction.redactUrl(url)}, username=$username, " +
+      s"password=${Redaction.Mask}, maximumPoolSize=$maximumPoolSize, minimumIdleConnections=$minimumIdleConnections, " +
+      s"blockingPoolSize=$blockingPoolSize, connectionTimeout=$connectionTimeout, queryTimeout=$queryTimeout)"
 }
 
 final case class JdbcProtocolBuilder(
