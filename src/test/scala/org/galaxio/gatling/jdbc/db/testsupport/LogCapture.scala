@@ -29,7 +29,7 @@ object LogCapture {
     try {
       body
       import scala.jdk.CollectionConverters._
-      appender.list.asScala.toList.map(_.getFormattedMessage)
+      appender.list.asScala.toList.map(renderEvent)
     } finally {
       previous.foreach { case (l, lvl, additive) =>
         l.detachAppender(appender)
@@ -42,4 +42,20 @@ object LogCapture {
 
   /** Convenience for a single logger. */
   def capture(loggerName: String)(body: => Unit): Seq[String] = capture(Seq(loggerName))(body)
+
+  /** Formatted message plus the full throwable-proxy message chain, so a `logger.debug(msg, throwable)` call is captured with
+    * its exception text — an assertion over "does the raw message reach the log" must see the throwable, not just the message.
+    */
+  private def renderEvent(event: ILoggingEvent): String = {
+    val sb = new StringBuilder(event.getFormattedMessage)
+    Option(event.getThrowableProxy).foreach(appendProxy(sb, _))
+    sb.toString
+  }
+
+  private def appendProxy(sb: StringBuilder, tp: ch.qos.logback.classic.spi.IThrowableProxy): Unit = {
+    sb.append('\n').append(tp.getClassName)
+    Option(tp.getMessage).foreach(m => sb.append(": ").append(m))
+    Option(tp.getCause).foreach(appendProxy(sb, _))
+    Option(tp.getSuppressed).foreach(_.foreach(appendProxy(sb, _)))
+  }
 }

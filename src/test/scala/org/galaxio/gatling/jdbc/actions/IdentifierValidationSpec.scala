@@ -9,6 +9,7 @@ import org.galaxio.gatling.jdbc.actions.actions.{
   Columns,
   DBInsertActionBuilder,
 }
+import org.galaxio.gatling.jdbc.db.testsupport.LogCapture
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -57,25 +58,43 @@ class IdentifierValidationSpec extends AnyFlatSpec with Matchers with JdbcAction
     } finally tc.close()
   }
 
-  "a feeder-driven malicious table name" should "fail the request with nothing sent to the database" in {
+  "a feeder-driven malicious table name" should "fail the request with a value-free crash message (#126)" in {
     seed()
-    val malicious       = "id_rows; DROP TABLE id_rows"
-    val (stats, failed) = runInsert(malicious, Columns("id"), 1)
+    val malicious = "id_rows; DROP TABLE id_rows"
+    val stats     = new RecordingStatsEngine
+    val tc        = buildRealTestContext(dbName, 2, config, stats)
+    val debug     = LogCapture.capture(Seq("org.galaxio.gatling.jdbc.actions.ActionBase")) {
+      val capture = new CaptureAction()
+      DBInsertActionBuilder(
+        _ => Success("identifier-request"),
+        _ => Success(malicious),
+        Columns("id"),
+        Seq("id" -> (_ => Success(1))),
+      ).build(tc.ctx, capture) ! freshSession()
+      capture.awaitCapture() shouldBe true
+      capture.capturedSession.isFailed shouldBe true
+    }
+    try {
+      stats.crashes should have size 1
+      // the feeder-derived value must NOT reach shared stats/reports (spec 005 FR-007) …
+      stats.crashes.head.error should not include malicious
+      stats.crashes.head.error should include("Invalid SQL identifier rejected")
+      stats.responses.head.message.getOrElse("") should not include malicious
+      stats.responses.head.status shouldBe KO
+      // … while the full detail (with the value) is available to an engineer who enables DEBUG
+      debug.mkString("\n") should include(malicious)
 
-    failed shouldBe true
-    stats.crashes should have size 1
-    stats.crashes.head.error should include(malicious)
-    stats.responses.head.status shouldBe KO
-
-    count("id_rows") shouldBe 1 // seed row only — nothing executed, table intact
+      count("id_rows") shouldBe 1 // seed row only — nothing executed, table intact
+    } finally tc.close()
   }
 
-  "an invalid static column name" should "fail the request before any SQL is assembled" in {
+  "an invalid static column name" should "fail the request before any SQL is assembled, value-free" in {
     seed()
     val (stats, failed) = runInsert("id_rows", Columns("id--"), 1)
 
     failed shouldBe true
-    stats.crashes.head.error should include("id--")
+    stats.crashes.head.error should not include "id--"
+    stats.crashes.head.error should include("Invalid SQL identifier rejected")
     count("id_rows") shouldBe 1
   }
 
