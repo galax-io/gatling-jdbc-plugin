@@ -33,7 +33,8 @@ case class DBCallAction(
   override def execute(session: Session): Unit =
     (for {
       rn       <- requestName(session)
-      pName    <- procedureName(session)
+      // #90: the resolved name is feeder-reachable input — validate against the identifier grammar before any CALL text exists
+      pName    <- procedureName(session).flatMap(validIdentifier)
       pParams  <- sessionParams
                     .foldLeft(Seq.empty[(String, Any)].success) { case (r, (k, v)) =>
                       r.flatMap(seq => v(session).map(rv => seq :+ (k -> rv)))
