@@ -18,6 +18,7 @@ JDBC protocol plugin for [Gatling](https://gatling.io/) load testing framework. 
 - [Actions](#actions)
 - [Checks](#checks)
 - [Session Variables](#session-variables)
+- [Upgrading to 1.5.0](#upgrading-to-150)
 - [Examples](#examples)
 - [Contributing](#contributing)
 - [License](#license)
@@ -321,6 +322,21 @@ jdbc("batch update").batch(
 )
 ```
 
+**Dynamic `where` values (since 1.5.0):** bind session data as parameters rather than
+interpolating it into the clause. A `where(String)` clause is author-fixed SQL and rejects
+Gatling EL (`#{…}`) at scenario-build time; pass dynamic values through the parameterized
+overload so they are bound as data and can never widen the predicate:
+
+```scala
+// Scala — {name} placeholders bound from the params
+update("users").set("status" -> "BLOCKED").where("email = {email}", "email" -> "#{userEmail}")
+```
+
+```java
+// Java / Kotlin
+update("users").set(Map.of("status", "BLOCKED")).where("email = {email}", Map.of("email", "#{userEmail}"));
+```
+
 **Java / Kotlin:**
 
 ```java
@@ -462,6 +478,62 @@ jdbc("insert user")
         "active", true
     ));
 ```
+
+## Upgrading to 1.5.0
+
+Release 1.5.0 hardens runtime correctness around SQL injection, secret handling, and NULL
+fidelity. Three changes are behavior changes — each fixes a silent-corruption or injection
+defect, so they ship as bug fixes in this minor release. Review the two migration items below
+if you use the affected features.
+
+### `"NULL"` strings are now stored as text (#93)
+
+Previously, a feeder or map value of the four-character string `"NULL"` was silently written
+as database **NULL**, making the literal text unstorable. It is now stored verbatim. Database
+NULL comes only from a genuinely absent value (JVM `null`) or an explicit `NullParam`.
+
+```scala
+// Before 1.5.0: this wrote SQL NULL. From 1.5.0: it writes the text "NULL".
+insertInto("t", Columns("name")).values("name" -> "NULL")
+
+// To write SQL NULL, use JVM null (Java/Kotlin maps) or NullParam (Scala):
+SQL("... {x}").withParams("x" -> NullParam)
+```
+
+If a scenario relied on `"NULL"` meaning SQL NULL, switch it to `NullParam` / `null`. Data
+that was previously NULLed will now be stored as text — that is the fix, not a regression.
+
+### `where(...)` rejects Gatling EL; bind values instead (#125)
+
+A `where("... #{value} ...")` string now fails at scenario-build time, because interpolating
+session data into the predicate is an injection vector. Replace it with the parameterized
+overload (see [Batch Operations](#batch-operations)):
+
+```scala
+// Before: where("email = '#{email}'")   ← now rejected at build time
+where("email = {email}", "email" -> "#{email}")   // values bound as data
+```
+
+Author-fixed clauses without EL (`where("status = 'ACTIVE'")`) are unaffected. The previous
+`Expression[String]` overload remains as a deprecated, documented escape hatch.
+
+### Error messages in reports are structured (#126)
+
+KO messages recorded into Gatling stats/reports are now rebuilt from structured fields
+(`ClassName [SQLState=…, code=…]`) so they never carry feeder values (emails, passwords) into
+shared artifacts. The full raw driver message is available on the plugin's DEBUG logger
+(`org.galaxio.gatling.jdbc.actions.ActionBase`) — enable it to see raw detail while triaging.
+
+### Security note: secret-like pool properties (#91, #92)
+
+Connection passwords and URL-embedded credentials are redacted from the protocol builder's
+`toString` and from anything the plugin logs. Custom HikariCP data-source properties whose
+names match `password`, `secret`, `token`, `passphrase`, `credential`, or `apikey` (case- and
+separator-insensitive) are flagged with a build-time warning, because HikariCP prints custom
+properties verbatim in its **own** DEBUG config dump — which the plugin cannot suppress.
+Properties with names outside that set are **not** covered: name secret-bearing properties
+recognizably, prefer `setPassword` (which HikariCP masks) over credentials in the JDBC URL,
+and avoid DEBUG logging with real secrets in shared runs.
 
 ## Examples
 
