@@ -5,7 +5,7 @@ import io.gatling.core.action.{Action, ChainableAction}
 import io.gatling.core.session.{Expression, Session}
 import io.gatling.core.structure.ScenarioContext
 import io.gatling.core.util.NameGen
-import actions.{BatchAction, BatchInsertAction, BatchUpdateAction}
+import actions.{BatchAction, BatchInsertAction, BatchParameterizedUpdateAction, BatchUpdateAction}
 import io.gatling.commons.validation.{SuccessWrapper, Validation}
 import io.gatling.core.stats.StatsEngine
 import org.galaxio.gatling.jdbc.db._
@@ -48,6 +48,19 @@ final case class DBBatchAction(
         sql           <- SQL(s"UPDATE $tName SET ${iParams.map(c => s"${c._1} = {${c._1}}").mkString(",")} WHERE $resolvedWhere")
                            .withParamsMap(iParams)
                            .success
+      } yield sql
+
+    case BatchParameterizedUpdateAction(tableName, updateValues, whereClause, whereParams) =>
+      // #125: the clause is author-fixed at construction (EL rejected there); dynamic values arrive only through whereParams
+      // and are bound as prepared-statement data — they can match rows, never reshape the predicate
+      for {
+        tName   <- tableName(session).flatMap(validIdentifier)
+        _       <- validIdentifiers(updateValues.map(_._1))
+        iParams <- resolveParams(session, updateValues)
+        wParams <- resolveParams(session, whereParams)
+        sql     <- SQL(s"UPDATE $tName SET ${iParams.map(c => s"${c._1} = {${c._1}}").mkString(",")} WHERE $whereClause")
+                     .withParamsMap(iParams ++ wParams)
+                     .success
       } yield sql
 
     case BatchInsertAction(tableName, columns, sessionValues) =>
