@@ -14,7 +14,7 @@ public class BatchUpdateValuesStepAction {
     /**
      * Static, author-fixed WHERE clause. Gatling EL ({@code #{...}}) inside the clause is rejected at
      * construction time — it would resolve session data into statement text (issue #125); bind dynamic
-     * values with {@link #where(String, Map)} instead.
+     * values with {@code where(String, Map)} instead.
      */
     public BatchUpdateAction where(String whereExpression){
         return new BatchUpdateAction(wrapped.where(whereExpression));
