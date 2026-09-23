@@ -1,11 +1,16 @@
 name: Continuous Integration
 
 # Test-only. Releases are tag-driven and live in release.yml.
+#
+# push is scoped to main only: pull_request already covers every other
+# branch, and github.ref differs between the two event types (refs/pull/N/merge
+# vs refs/heads/<branch>), so the concurrency group below never dedupes them --
+# a push to a branch with an open PR used to trigger two full runs.
 on:
   pull_request:
     branches: ['**']
   push:
-    branches: ['**']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +31,7 @@ jobs:
   test:
     name: Lint, Compile & Test
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,6 +59,8 @@ jobs:
         run: sbt scalafmtCheckAll scalafmtSbtCheck
       - name: Compile
         run: sbt clean compile
+      - name: Binary compatibility (MiMa)
+        run: sbt mimaReportBinaryIssues
       - name: Tests (including Gatling JDBC example on H2)
         run: sbt coverage "Gatling / testOnly org.galaxio.performance.jdbc.test.DebugTest" test coverageReport coverageOff
       - name: Upload coverage reports to Codecov
