@@ -14,6 +14,13 @@ lazy val root = (project in file("."))
     // Do not publish artifacts for Gatling-specific configurations (simulations/tests)
     Gatling / publishArtifact   := false,
     GatlingIt / publishArtifact := false,
+    // Binary-compatibility check against the latest published release.
+    mimaPreviousArtifacts       := Set(organization.value %% name.value % "1.5.0"),
+    // Coverage floor, set just under measured (stmt=84.45% branch=86.19%, 2026-09-22).
+    // Only ever moves up.
+    coverageMinimumStmtTotal    := 80,
+    coverageMinimumBranchTotal  := 82,
+    coverageFailOnMinimum       := true,
     libraryDependencies ++= gatling ++ gatlingCore,
     libraryDependencies ++= Seq(hikari, h2jdbc, scalatest, testcontainersPg, postgresJdbc),
     scalacOptions ++= Seq(
