@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: gatling-jdbc-plugin
+  description: JDBC protocol plugin for Gatling load testing, providing SQL query/insert/update/batch actions with HikariCP connection pooling and result checks
+  annotations:
+    github.com/project-slug: galax-io/gatling-jdbc-plugin
+spec:
+  type: library
+  lifecycle: production
+  owner: galaxio

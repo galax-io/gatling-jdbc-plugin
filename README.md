@@ -547,9 +547,6 @@ and avoid DEBUG logging with real secrets in shared runs.
 # Build
 sbt compile
 
-# Run unit tests
-sbt test
-
 # Run all tests (unit + integration; integration tests start PostgreSQL via Testcontainers)
 sbt test
 
