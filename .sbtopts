@@ -1,0 +1,3 @@
+# sbt 2 defaults to the thin client, which parses `sbt a b` as one command.
+# Run the regular launcher so multi-command invocations keep working.
+--server

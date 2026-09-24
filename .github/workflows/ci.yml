@@ -37,28 +37,23 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Setup Java (Temurin 17) with sbt cache
+      # sbt 2.0.9 (project/build.properties) needs JDK 17+. Only the Coursier
+      # dependency cache is restored: sbt 2 caches task results and runs tests
+      # incrementally, so restoring its task cache (~/.cache/sbt) or target/
+      # could skip tests. Hence no `cache: sbt` here and no ~/.sbt cache.
+      - name: Setup Java (Temurin 17)
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
-          cache: sbt
       - uses: sbt/setup-sbt@v1
       - name: Cache Coursier
         uses: coursier/cache-action@v8
-      - name: Cache Ivy/SBT
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.ivy2/cache
-            ~/.sbt
-            ~/.cache/coursier
-          key: sbt-${{ runner.os }}-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/**') }}
-          restore-keys: sbt-${{ runner.os }}-
       - name: Check Formatting
         run: sbt scalafmtCheckAll scalafmtSbtCheck
       - name: Compile
         run: sbt clean compile
+      # Blocking: fails the build on any binary incompatibility against 1.5.0.
       - name: Binary compatibility (MiMa)
         run: sbt mimaReportBinaryIssues
       - name: Tests (including Gatling JDBC example on H2)
@@ -66,4 +61,16 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v7
         with:
+          # sbt 2 writes reports under target/out/jvm/scala-<version>/<module>/.
+          files: target/out/jvm/scala-2.13.18/gatling-jdbc-plugin/scoverage-report/scoverage.xml
           fail_ci_if_error: false
+
+  # Proves the sbt upgrade changes no published artifact: builds the PR base
+  # with its own sbt launcher and the head with the pinned one, then diffs
+  # artifacts, POMs, jar entries and class-file versions and runs MiMa.
+  sbt-upgrade-parity:
+    name: sbt upgrade parity
+    if: github.event_name == 'pull_request'
+    uses: galax-io/gatling-picatinny/.github/workflows/sbt-upgrade-parity.yml@4a4d8413b0a593927efc560198da3452fecee8cd
+    with:
+      mode: library
