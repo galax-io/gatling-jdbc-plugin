@@ -51,7 +51,7 @@ is prepared (plan.md, "Delivery order").
 
 ## gatling-jdbc-plugin
 
-- [ ] T-006 [repo:galax-io/gatling-jdbc-plugin] [US1] Move the build to sbt 2.0.9 and call the parity gate (`project/build.properties`, `build.sbt`, `.github/workflows/ci.yml`)
+- [x] T-006 [repo:galax-io/gatling-jdbc-plugin] [US1] Move the build to sbt 2.0.9 and call the parity gate (`project/build.properties`, `build.sbt`, `.github/workflows/ci.yml`)
   AC: `project/build.properties` pins exactly `sbt.version=2.0.9`; plugins, library dependencies and Scala 2.13.18 stay as they are.
   AC: `build.sbt` loads on sbt 2: URI-typed keys, `Seq[License]`, scoped bare settings, and `Def.uncached` where a task result has no JsonFormat.
   AC: `.github/workflows/ci.yml` on Temurin 17 runs the scalafmt check, `mimaReportBinaryIssues` against 1.5.0 as a blocking step under the sbt 2 MiMa plugin, and the coverage tests including the Gatling H2 `DebugTest` on sbt 2.0.9, with the new `target/` paths and no restored sbt 2 cache.
