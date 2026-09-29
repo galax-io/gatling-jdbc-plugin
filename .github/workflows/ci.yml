@@ -47,6 +47,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: sbt/setup-sbt@v1
+        with:
+          disk-cache: false # FR-007: never restore the sbt 2 task cache
       - name: Cache Coursier
         uses: coursier/cache-action@v8
       - name: Check Formatting
