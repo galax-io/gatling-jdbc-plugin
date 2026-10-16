@@ -5,7 +5,11 @@ metadata:
   description: JDBC protocol plugin for Gatling load testing, providing SQL query/insert/update/batch actions with HikariCP connection pooling and result checks
   annotations:
     github.com/project-slug: galax-io/gatling-jdbc-plugin
+    galaxio.io/plans.docker-images: "runtime: CI runs the example simulations in the Gatling runtime image"
+    galaxio.io/uses.spec-kit-galaxio-bootstrap: "process: created from the template, takes process updates via copier update"
 spec:
   type: library
   lifecycle: production
   owner: galaxio
+  dependsOn:
+    - component:default/spec-kit-galaxio-bootstrap
