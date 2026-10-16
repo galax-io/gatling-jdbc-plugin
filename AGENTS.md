@@ -91,6 +91,17 @@ Enforced by [`scripts/check-linkage.sh`](scripts/check-linkage.sh) + the [`.clau
 
 > The `--for-tag` gate resolves `vX.Y.Z` to a milestone whose title starts with that **exact** version first (a dedicated patch milestone, e.g. `v1.3.1 <description>`); if none exists it falls back to the milestone whose title starts with `vX.Y.0`. Name release milestones `vX.Y.0 <description>` (or `vX.Y.Z <description>` for a dedicated patch milestone) for the gate to resolve; audit and `--pr` modes work with any milestone name.
 
+## Feature milestones (ALWAYS)
+
+A feature is an issue in `galax-io/galaxio-sdlc-backlog`. It belongs to exactly one backlog milestone whose description has the line `Release: business`. Backlog milestones without that line (the backlog's own tooling and documents) are not releases and follow "Milestones" above.
+
+- **Feature issue.** Lists the work in every repository it touches as a checklist, one line per issue or PR: `- [ ] galax-io/<repo>#<N> → <repo milestone>`. A line is checked when that work is merged and the repository milestone it names has been released, so its tag exists.
+- **Repository work.** Every issue and PR of a feature carries the version milestone of its own repository and writes `Part of galax-io/galaxio-sdlc-backlog#<feature>`. A repository ships its own version when its milestone is complete, as under "Release Process". `scripts/check-linkage.sh` skips the same-milestone rule for a link to a feature; the PR still needs its own milestone.
+- **Feature done.** A feature issue is closed only when every line of its checklist is checked.
+- **Release.** When every feature of a business milestone is closed, close the milestone and publish a GitHub Release in `galax-io/galaxio-sdlc-backlog` that lists each feature with the repository versions that carry it. Name the release and its tag by the milestone's id, the title up to the first ` — `, lowercased (`M1 — first run` → `m1`).
+- **Published releases are not edited.** A revert after the release is a new feature in the next business milestone.
+- **Never** close a business milestone with an open feature, release a feature whose repository version is not tagged, or leave a repository version out of the release text.
+
 ## Commits & PRs
 
 - **Spec-first.** `specs/NNN-*/` artifacts land as a `docs(speckit): add NNN-<feature> spec/plan/tasks` commit BEFORE any `feat`/`fix`. Never fold spec artifacts into implementation commits.
