@@ -90,11 +90,16 @@ add_issue() { # number, state
   printf '{"number":%s,"state":"%s"}\n' "$1" "$2" >> "$fx/items.ndjson"
   issue_in "$REPO" "$1" v0.8.0
 }
-pr_json() { # number, state, closing issue number or "", body, milestone title or ""
-  jq -nc --argjson n "$1" --arg state "$2" --arg c "$3" --arg body "$4" --arg ms "$5" '{
+pr_json() { # number, state, closing issue number (or owner/repo#N) or "", body, milestone title or ""
+  jq -nc --argjson n "$1" --arg state "$2" --arg c "$3" --arg body "$4" --arg ms "$5" \
+    --arg author "${PR_AUTHOR:-jigarkhwar}" --arg bot "${PR_BOT:-0}" --arg head "${PR_HEAD:-feat/x}" '{
     number: $n, title: "PR \($n)", state: $state, body: $body,
+    author: {login: $author, is_bot: ($bot == "1")}, headRefName: $head,
     milestone: (if $ms == "" then null else {title: $ms} end),
-    closingIssuesReferences: [$c | select(. != "") | {number: tonumber}]}' > "$fx/pr-$1.json"
+    closingIssuesReferences: [$c | select(. != "")
+      | if test("#") then capture("^(?<owner>[^/]+)/(?<name>[^#]+)#(?<n>[0-9]+)$")
+          | {number: (.n | tonumber), repository: {name, owner: {login: .owner}}}
+        else {number: tonumber} end]}' > "$fx/pr-$1.json"
 }
 add_pr() { # number, state, closing issue number or "", [body] — a PR in v0.8.0
   local rest=closed
@@ -102,7 +107,10 @@ add_pr() { # number, state, closing issue number or "", [body] — a PR in v0.8.
   printf '{"number":%s,"state":"%s","pull_request":{}}\n' "$1" "$rest" >> "$fx/items.ndjson"
   pr_json "$1" "$2" "$3" "${4:-}" v0.8.0
 }
-run() {
+run() { # FEATURE_LINK=optional: the cases above the strict ones test the older rules
+  out="$(PATH="$bin:$PATH" REPO="$REPO" BACKLOG_REPO="$BACKLOG" FEATURE_LINK=optional FIXTURES="$fx" bash "$script" "$@" 2>&1)"; rc=$?
+}
+run_strict() { # as run, with the requirement of a feature link in force (the default)
   out="$(PATH="$bin:$PATH" REPO="$REPO" BACKLOG_REPO="$BACKLOG" FIXTURES="$fx" bash "$script" "$@" 2>&1)"; rc=$?
 }
 has() { grep -qF -- "$1" <<<"$out"; }
@@ -188,6 +196,79 @@ issue_in "$BACKLOG" 30 'M1 — first run' "$BUSINESS"
 run --tag
 check "tag: a merged PR that links a feature does not block the tag" $([ "$rc" -eq 0 ] && echo 0 || echo 1) "rc=$rc out=$out"
 check "tag: the milestone is tag-ready" $(has 'Milestone #8 is tag-ready.' && echo 0 || echo 1) "out=$out"
+
+# 9. gate: every PR links a feature of the backlog; a technical PR with no link fails
+new_case strict-none
+pr_json 3 OPEN "" "Bumps the pins." v0.8.0
+run_strict --pr 3
+check "strict: a PR with no link to a feature fails" $([ "$rc" -eq 1 ] && echo 0 || echo 1) "rc=$rc out=$out"
+check "strict: it says which link to add" $(has '✗ links no feature of the backlog — add "Part of '"$BACKLOG"'#<feature>" (maintenance with no feature of its own: the standing feature of the active business milestone, the issue with the label standing)' && echo 0 || echo 1) "out=$out"
+
+# 10. gate: Part of a feature passes, the PR needs no issue of its own
+new_case strict-feature
+pr_json 3 OPEN "" "Part of $BACKLOG#30" v0.8.0
+issue_in "$BACKLOG" 30 'M1 — first run' "$BUSINESS"
+run_strict --pr 3
+check "strict: Part of a feature passes" $([ "$rc" -eq 0 ] && echo 0 || echo 1) "rc=$rc out=$out"
+
+# 11. gate: a closing link to an issue of this repository plus Part of a feature: the feature is seen
+new_case strict-closes-and-part
+pr_json 3 OPEN "$REPO#1" $'Closes #1\nPart of '"$BACKLOG"'#30' v0.8.0
+issue_in "$REPO" 1 v0.8.0
+issue_in "$BACKLOG" 30 'M1 — first run' "$BUSINESS"
+run_strict --pr 3
+check "strict: a closing link does not hide the Part of a feature" $([ "$rc" -eq 0 ] && echo 0 || echo 1) "rc=$rc out=$out"
+check "strict: the feature is reported" $(has "✓ links $BACKLOG#30 (feature of business milestone" && echo 0 || echo 1) "out=$out"
+
+# 12. gate: a closing link to a feature itself counts
+new_case strict-closing-feature
+pr_json 3 OPEN "$BACKLOG#30" "Closes $BACKLOG#30" v0.8.0
+issue_in "$BACKLOG" 30 'M1 — first run' "$BUSINESS"
+run_strict --pr 3
+check "strict: a closing link to a feature counts" $(has 'links no feature' && echo 1 || echo 0) "rc=$rc out=$out"
+
+# 13. gate: a backlog issue that is not a feature does not satisfy the requirement
+new_case strict-not-feature
+pr_json 3 OPEN "" "Part of $BACKLOG#31" v0.8.0
+issue_in "$BACKLOG" 31 'v0.8.0' 'Tooling of the backlog itself.'
+run_strict --pr 3
+check "strict: Part of a backlog issue in an ordinary milestone is no feature" $([ "$rc" -eq 1 ] && has '✗ links no feature of the backlog' && echo 0 || echo 1) "rc=$rc out=$out"
+
+# 14. gate: a bot's PR is exempt (bot author, or Dependabot's or Scala Steward's branch)
+new_case strict-bot
+PR_AUTHOR='dependabot[bot]' PR_BOT=1 pr_json 3 OPEN "" "Bumps a library." v0.8.0
+run_strict --pr 3
+check "strict: a bot's PR needs no feature" $([ "$rc" -eq 0 ] && has 'needs no feature' && echo 0 || echo 1) "rc=$rc out=$out"
+new_case strict-steward
+PR_HEAD='update/scalafmt-core-3.9.0' pr_json 3 OPEN "" "Update scalafmt-core to 3.9.0" v0.8.0
+run_strict --pr 3
+check "strict: a Scala Steward branch is exempt" $([ "$rc" -eq 0 ] && echo 0 || echo 1) "rc=$rc out=$out"
+new_case strict-human-update
+PR_HEAD='feat/not-a-bot' pr_json 3 OPEN "" "Update the docs" v0.8.0
+run_strict --pr 3
+check "strict: a human's branch is not exempt" $([ "$rc" -eq 1 ] && echo 0 || echo 1) "rc=$rc out=$out"
+
+# 15. gate: the backlog's own PRs link nothing above them
+new_case strict-backlog-itself
+pr_json 3 OPEN "" "Adds a script." v0.8.0
+out="$(PATH="$bin:$PATH" REPO="$BACKLOG" BACKLOG_REPO="$BACKLOG" FIXTURES="$fx" bash "$script" --pr 3 2>&1)"; rc=$?
+check "strict: a PR in the backlog repository itself needs no feature" $([ "$rc" -ne 1 ] && ! has 'links no feature' && echo 0 || echo 1) "rc=$rc out=$out"
+
+# 16. audit: a PR of the milestone without a feature link is a warning, not an error
+new_case strict-audit
+add_issue 1 open
+add_pr 2 OPEN 1
+add_pr 3 OPEN "" "Bumps the pins."
+run_strict
+check "strict audit: a PR without a feature is a warning" $([ "$rc" -eq 0 ] && has '! PR #3' && has 'links no feature of the backlog' && echo 0 || echo 1) "rc=$rc out=$out"
+
+# 17. the requirement can be switched off by name only
+new_case strict-optional
+pr_json 3 OPEN "" "Bumps the pins." v0.8.0
+run --pr 3
+check "optional: FEATURE_LINK=optional lets a PR without a feature pass" $([ "$rc" -eq 0 ] && echo 0 || echo 1) "rc=$rc out=$out"
+out="$(PATH="$bin:$PATH" REPO="$REPO" BACKLOG_REPO="$BACKLOG" FEATURE_LINK=nonsense FIXTURES="$fx" bash "$script" --pr 3 2>&1)"; rc=$?
+check "optional: an unknown FEATURE_LINK value is refused" $([ "$rc" -eq 2 ] && echo 0 || echo 1) "rc=$rc out=$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
