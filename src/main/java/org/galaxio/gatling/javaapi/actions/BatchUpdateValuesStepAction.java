@@ -33,4 +33,16 @@ public class BatchUpdateValuesStepAction {
     public BatchParameterizedUpdateAction where(String whereClause, Map<String, Object> params){
         return new BatchParameterizedUpdateAction(wrapped.where(whereClause, Utils.getSeq(params)));
     }
+
+    /**
+     * Updates every row of the table with the {@code set(...)} values: the statement has no WHERE clause.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * update("users").set(Map.of("STATUS", "ACTIVE")).all()
+     * }</pre>
+     */
+    public BatchUpdateAction all(){
+        return new BatchUpdateAction(wrapped.all());
+    }
 }
