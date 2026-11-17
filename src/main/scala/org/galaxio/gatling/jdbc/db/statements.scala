@@ -6,19 +6,25 @@ import java.sql.{CallableStatement, PreparedStatement, ResultSet, Statement, Tim
 import scala.concurrent.{ExecutionContext, Future}
 
 object statements {
+
+  /** The failure of a SQL placeholder with no parameter binding, the same for prepared and callable statements. */
+  private def unboundPlaceholder(name: String): IllegalArgumentException =
+    new IllegalArgumentException(s"SQL placeholder '$name' has no corresponding parameter binding")
+
   implicit class PreparedStatementOps(private val stmt: PreparedStatement) {
     def setParams(interpolated: InterpolatorCtx, params: Map[String, ParamVal]): Unit = {
       if (params.nonEmpty) {
         interpolated.m.foreach { case (name, indexes) =>
-          params(name) match {
-            case IntParam(v)     => indexes.foreach(stmt.setInt(_, v))
-            case DoubleParam(v)  => indexes.foreach(stmt.setDouble(_, v))
-            case StrParam(v)     => indexes.foreach(stmt.setString(_, v))
-            case LongParam(v)    => indexes.foreach(stmt.setLong(_, v))
-            case NullParam       => indexes.foreach(stmt.setObject(_, null))
-            case DateParam(v)    => indexes.foreach(stmt.setTimestamp(_, Timestamp.valueOf(v)))
-            case BooleanParam(v) => indexes.foreach(stmt.setBoolean(_, v))
-            case UUIDParam(v)    => indexes.foreach(stmt.setString(_, v.toString))
+          params.get(name) match {
+            case Some(IntParam(v))     => indexes.foreach(stmt.setInt(_, v))
+            case Some(DoubleParam(v))  => indexes.foreach(stmt.setDouble(_, v))
+            case Some(StrParam(v))     => indexes.foreach(stmt.setString(_, v))
+            case Some(LongParam(v))    => indexes.foreach(stmt.setLong(_, v))
+            case Some(NullParam)       => indexes.foreach(stmt.setObject(_, null))
+            case Some(DateParam(v))    => indexes.foreach(stmt.setTimestamp(_, Timestamp.valueOf(v)))
+            case Some(BooleanParam(v)) => indexes.foreach(stmt.setBoolean(_, v))
+            case Some(UUIDParam(v))    => indexes.foreach(stmt.setString(_, v.toString))
+            case None                  => throw unboundPlaceholder(name)
           }
         }
       }
@@ -45,11 +51,7 @@ object statements {
               case Some(DateParam(v))    => indexes.foreach(stmt.setTimestamp(_, Timestamp.valueOf(v)))
               case Some(UUIDParam(v))    => indexes.foreach(stmt.setObject(_, v))
               case Some(BooleanParam(v)) => indexes.foreach(stmt.setBoolean(_, v))
-              case None                  =>
-                throw new IllegalArgumentException(
-                  s"SQL placeholder '$name' has no corresponding parameter binding",
-                )
-
+              case None                  => throw unboundPlaceholder(name)
             }
         }
     }

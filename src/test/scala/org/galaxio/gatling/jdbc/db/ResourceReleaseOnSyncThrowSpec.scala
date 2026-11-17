@@ -51,7 +51,7 @@ class ResourceReleaseOnSyncThrowSpec extends AnyFlatSpec with Matchers {
       val result = failingSelect(client)
 
       result shouldBe a[Failure[_]]
-      result.failure.exception shouldBe a[NoSuchElementException]
+      result.failure.exception shouldBe an[IllegalArgumentException]
 
       ds.trackedResources should not be empty
       ds.trackedResources.map(_.kind) should contain allOf ("connection", "statement")
@@ -69,7 +69,7 @@ class ResourceReleaseOnSyncThrowSpec extends AnyFlatSpec with Matchers {
 
       result shouldBe a[Failure[_]]
       val exception = result.failure.exception
-      exception shouldBe a[NoSuchElementException]
+      exception shouldBe an[IllegalArgumentException]
       exception.getSuppressed.map(_.getMessage) should contain("injected close failure")
 
       all(ds.trackedResources.map(_.closeCount.get())) shouldBe 1

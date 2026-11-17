@@ -38,6 +38,15 @@ class UnboundPlaceholderBindingSpec extends AnyFlatSpec with Matchers with H2Cli
     rs.getString(1)
   }
 
+  /** Every connection and statement the operation acquired was closed exactly once and the pool has no active connection. */
+  private def assertReleasedExactlyOnce(): Unit = {
+    countingDataSource.trackedResources.map(_.kind) should contain allOf ("connection", "statement")
+    all(countingDataSource.trackedResources.map(_.closeCount.get())) shouldBe 1
+
+    Thread.sleep(200)
+    countingDataSource.getHikariPoolMXBean.getActiveConnections shouldBe 0
+  }
+
   private val unboundSelect = "SELECT id FROM ub_items WHERE id = {a} AND name = {b}"
 
   private def failingSelect(): Throwable =
@@ -47,12 +56,14 @@ class UnboundPlaceholderBindingSpec extends AnyFlatSpec with Matchers with H2Cli
 
   it should "fail an update with IllegalArgumentException naming it, before execution" in {
     seed()
+    countingDataSource.resetTracking()
     val insert = "INSERT INTO ub_items (id, name) VALUES ({id},{name})"
     val result = await(client.executeUpdate(insert, Seq("id" -> IntParam(2)))(identity))
 
     result.failure.exception shouldBe an[IllegalArgumentException]
     result.failure.exception.getMessage shouldBe bindingMessage("name")
     countFromFreshConnection("ub_items") shouldBe 1 // only the seeded row: the INSERT never ran
+    assertReleasedExactlyOnce()
   }
 
   it should "fail a select with IllegalArgumentException, releasing connection and statement exactly once" in {
@@ -63,11 +74,7 @@ class UnboundPlaceholderBindingSpec extends AnyFlatSpec with Matchers with H2Cli
 
     exception shouldBe an[IllegalArgumentException]
     exception.getMessage shouldBe bindingMessage("b")
-    countingDataSource.trackedResources.map(_.kind) should contain allOf ("connection", "statement")
-    all(countingDataSource.trackedResources.map(_.closeCount.get())) shouldBe 1
-
-    Thread.sleep(200)
-    countingDataSource.getHikariPoolMXBean.getActiveConnections shouldBe 0
+    assertReleasedExactlyOnce()
   }
 
   it should "keep IllegalArgumentException primary when the statement close fails, the close failure suppressed" in {
@@ -79,20 +86,19 @@ class UnboundPlaceholderBindingSpec extends AnyFlatSpec with Matchers with H2Cli
 
     exception shouldBe an[IllegalArgumentException]
     exception.getSuppressed.map(_.getMessage) should contain("injected close failure")
-    all(countingDataSource.trackedResources.map(_.closeCount.get())) shouldBe 1
-
-    Thread.sleep(200)
-    countingDataSource.getHikariPoolMXBean.getActiveConnections shouldBe 0
+    assertReleasedExactlyOnce()
   }
 
   it should "fail a batch with IllegalArgumentException naming it, changing no row" in {
     seed()
+    countingDataSource.resetTracking()
     val update = SqlWithParam("UPDATE ub_items SET name = {name} WHERE id = {id}", Seq("name" -> StrParam("CHANGED")))
     val result = await(client.batch(Seq(update))(identity))
 
     result.failure.exception shouldBe an[IllegalArgumentException]
     result.failure.exception.getMessage shouldBe bindingMessage("id")
     nameOf(1) shouldBe "KEEP"
+    assertReleasedExactlyOnce()
   }
 
   it should "fail the prepared and the callable path with the same exception and message" in {

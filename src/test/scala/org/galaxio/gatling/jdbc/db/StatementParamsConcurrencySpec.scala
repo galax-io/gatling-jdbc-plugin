@@ -172,7 +172,8 @@ class StatementParamsConcurrencySpec extends AnyFlatSpec with Matchers with Befo
 
     val result = Await.result(future, 10.seconds)
     result shouldBe a[Failure[_]]
-    result.failure.exception shouldBe a[NoSuchElementException]
+    result.failure.exception shouldBe an[IllegalArgumentException]
+    result.failure.exception.getMessage shouldBe "SQL placeholder 'name' has no corresponding parameter binding"
 
     val conn = dataSource.getConnection
     try {
