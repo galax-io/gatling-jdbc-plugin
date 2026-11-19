@@ -6,8 +6,6 @@ import statements._
 
 import java.sql.{CallableStatement, Connection, PreparedStatement, ResultSet, Statement}
 import java.util.concurrent.{ExecutorService, TimeUnit}
-import scala.collection.immutable.AbstractMap
-import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.control.NonFatal
@@ -23,309 +21,59 @@ object JDBCClient {
         inCurlyBraces: Boolean,
         m: ParamToIndexesMap,
     )
+    private[this] def putToCtx(ctx: Map[String, List[Int]], name: String, number: Int): Map[String, List[Int]] = {
+      val numbers = ctx.getOrElse(name, List.empty[Int])
+      ctx ++ Map((name, number :: numbers))
+    }
 
-    /** Replaces each `{name}` outside literals and comments with ` ?`, in one pass over `sql` (see `Scanner`). */
-    def interpolate(sql: String): InterpolatorCtx = new Scanner(sql).run()
-
-    // what the scanner is reading
-    private final val Normal         = 0
-    private final val InBraces       = 1 // a placeholder name
-    private final val InQuote        = 2 // '…'
-    private final val InIdentifier   = 3 // "…"
-    private final val InEscape       = 4 // E'…'
-    private final val AfterBackslash = 5 // in E'…', right after a backslash
-    private final val AfterQuote     = 6 // in E'…', right after a quote: it closes, unless a second quote follows
-    private final val InLineComment  = 7
-    private final val InBlockComment = 8
-
-    // dialect quoting, which counts only once its closing marker comes
-    private final val Backtick = 0
-    private final val Bracket  = 1
-    private final val Dollar   = 2
-    private final val Slashes  = 3
-    private final val QQuote   = 4
-    private final val Kinds    = 5
-
-    /** Replaces each `{name}` with ` ?` in one pass over the SQL, a character at a time.
-      *
-      * String literals `'…'` (in `E'…'` a backslash escapes), quoted identifiers `"…"`, `--` comments up to the end of the line
-      * and block comments up to their first closing marker are copied as written, so a brace inside them is never a
-      * placeholder.
-      *
-      * Dialect quoting is copied as written once its closing marker comes; until then the SQL is read as if it were not there,
-      * and what was read of it is replaced when it closes. Backtick and bracket identifiers and `//` comments close only before
-      * an opening brace, a dollar-quoted string with a named tag only before an opening brace and outside a literal, a `q'…'`
-      * string only outside a literal.
+    /** One pass over `sql`: string literals `'…'`, quoted identifiers `"…"`, `--` comments up to the end of the line and block
+      * comments up to their first closing marker are copied as written, so a brace inside them is never a placeholder.
       */
-    private final class Scanner(sql: String) {
-      private val length    = sql.length
-      private val query     = new java.lang.StringBuilder(length)
-      private val name      = new java.lang.StringBuilder
-      private val names     = new ArrayBuffer[String] // the name of each placeholder, in order
-      private var state     = Normal
-      private var blockBody = 0
+    def interpolate(sql: String): InterpolatorCtx = {
+      val query         = new java.lang.StringBuilder(sql.length)
+      val name          = new java.lang.StringBuilder
+      var n             = 0
+      var m             = Map.empty[String, List[Int]]
+      var inCurlyBraces = false
 
-      // the dialect quoting open now, at most one of each kind: where it opened (-1 when none), where its body starts, and
-      // the query and the placeholders as they stood before it, to go back to when it closes
-      private val opened     = Array.fill(Kinds)(-1)
-      private val bodyFrom   = new Array[Int](Kinds)
-      private val queryAt    = new Array[Int](Kinds)
-      private val namesAt    = new Array[Int](Kinds)
-      private var openCount  = 0
-      private var dollarTag  = ""
-      private var qClose     = ' '
-      private var closing    = -1
-      private var closingEnd = 0
-
-      def run(): InterpolatorCtx = {
-        var i = 0
-        while (i < length) {
-          val c = sql.charAt(i)
-          if (openCount > 0) findClosing(i, c)
-          if (closing >= 0) i = close()
-          else {
-            if (c == '{') dropBraceFree()
-            i = step(i, c)
-          }
-        }
-        InterpolatorCtx(query.toString, name.toString, names.length, state == InBraces, new Placeholders(names))
+      def closedBy(marker: String, from: Int): Int = sql.indexOf(marker, from) match {
+        case -1  => sql.length
+        case end => end + marker.length
       }
 
-      private def charAt(at: Int, c: Char): Boolean = at >= 0 && at < length && sql.charAt(at) == c
-
-      private def identAt(at: Int): Boolean = at >= 0 && {
-        val c = sql.charAt(at)
-        c.isLetterOrDigit || c == '_' || c == '$' || c >= '\u0080'
+      def lineEnd(from: Int): Int = {
+        var end = from
+        while (end < sql.length && sql.charAt(end) != '\n' && sql.charAt(end) != '\r') end += 1
+        end
       }
 
-      private def copy(i: Int, width: Int): Int = {
-        query.append(sql, i, i + width)
-        i + width
-      }
-
-      private def enter(next: Int, i: Int, width: Int): Int = {
-        state = next
-        copy(i, width)
-      }
-
-      /** Reads `c` at `i` in the current state and returns where to read next. */
-      private def step(i: Int, c: Char): Int = state match {
-        case InBraces                                                                            =>
-          if (c != '}') name.append(c)
-          else {
-            names += name.toString
-            name.setLength(0)
+      var i = 0
+      while (i < sql.length) {
+        val c = sql.charAt(i)
+        if (inCurlyBraces) {
+          if (c == '}') {
+            n += 1
+            m = putToCtx(m, name.toString, n)
             query.append(" ?")
-            state = Normal
-          }
-          i + 1
-        case InQuote | InIdentifier | InLineComment | InBlockComment | InEscape | AfterBackslash =>
-          state = next(i, c)
-          copy(i, 1)
-        case AfterQuote if c == '\''                                                             => enter(InEscape, i, 1)
-        case _                                                                                   =>
-          state = Normal
-          normal(i, c)
-      }
-
-      /** The state after `c` at `i`, inside a literal or a comment. */
-      private def next(i: Int, c: Char): Int = state match {
-        case InQuote        => if (c == '\'') Normal else InQuote
-        case InIdentifier   => if (c == '"') Normal else InIdentifier
-        case InLineComment  => if (c == '\n' || c == '\r') Normal else InLineComment
-        case InBlockComment => if (c == '/' && i > blockBody && sql.charAt(i - 1) == '*') Normal else InBlockComment
-        case InEscape       => if (c == '\\') AfterBackslash else if (c == '\'') AfterQuote else InEscape
-        case _              => InEscape
-      }
-
-      private def normal(i: Int, c: Char): Int = c match {
-        case '{'                                                 =>
-          state = InBraces
-          i + 1
-        case '\''                                                => enter(InQuote, i, 1)
-        case '"'                                                 => enter(InIdentifier, i, 1)
-        case '-' if charAt(i + 1, '-')                           => enter(InLineComment, i, 2)
-        case '/' if charAt(i + 1, '*')                           =>
-          blockBody = i + 2
-          enter(InBlockComment, i, 2)
-        case 'E' | 'e' if charAt(i + 1, '\'') && !identAt(i - 1) => enter(InEscape, i, 2)
-        case '/' if charAt(i + 1, '/')                           =>
-          if (opened(Slashes) < 0) open(Slashes, i, i + 2)
-          copy(i, 2)
-        case '$' if opened(Dollar) < 0 && !identAt(i - 1)        => dollar(i)
-        case _                                                   =>
-          openAt(i, c)
-          copy(i, 1)
-      }
-
-      private def open(kind: Int, at: Int, body: Int): Unit = {
-        opened(kind) = at
-        bodyFrom(kind) = body
-        queryAt(kind) = query.length
-        namesAt(kind) = names.length
-        openCount += 1
-      }
-
-      private def drop(kind: Int): Unit = if (opened(kind) >= 0) {
-        opened(kind) = -1
-        openCount -= 1
-      }
-
-      /** An opening brace means the dialect quoting that must hold none was no quoting. */
-      private def dropBraceFree(): Unit = {
-        drop(Backtick)
-        drop(Bracket)
-        drop(Slashes)
-        if (dollarTag.length > 2) drop(Dollar)
-      }
-
-      /** Opens a dollar-quoted string at `i` when a tag `$…$` starts there; copies the tag. */
-      private def dollar(i: Int): Int = {
-        var k = i + 1
-        if (k < length && (sql.charAt(k).isLetter || sql.charAt(k) == '_' || sql.charAt(k) >= '\u0080'))
-          while (k < length && identAt(k) && sql.charAt(k) != '$') k += 1
-        if (!charAt(k, '$')) copy(i, 1)
-        else {
-          open(Dollar, i, k + 1)
-          dollarTag = sql.substring(i, k + 1)
-          copy(i, k + 1 - i)
-        }
-      }
-
-      /** Opens the backtick, bracket or `q'…'` quoting that may start at `i`, unless one of its kind is open. */
-      private def openAt(i: Int, c: Char): Unit = c match {
-        // after an operator character a backtick belongs to a PostgreSQL operator
-        case '`' if opened(Backtick) < 0 && !(i > 0 && "+-*/<>=~!@#%^&|?".indexOf(sql.charAt(i - 1)) >= 0) =>
-          open(Backtick, i, i + 1)
-        case '[' if opened(Bracket) < 0 && bracketOpens(i)                                                 =>
-          open(Bracket, i, i + 1)
-        case 'q' | 'Q' | 'n' | 'N' if opened(QQuote) < 0 && !identAt(i - 1)                                =>
-          val q         = if (c == 'n' || c == 'N') i + 1 else i
-          val delimiter = if (q + 2 < length) sql.charAt(q + 2) else ' '
-          if (
-            (charAt(q, 'q') || charAt(q, 'Q')) && charAt(q + 1, '\'') && !delimiter.isWhitespace && "{}'".indexOf(delimiter) < 0
-          ) {
-            qClose = delimiter match {
-              case '[' => ']'
-              case '(' => ')'
-              case '<' => '>'
-              case _   => delimiter
-            }
-            open(QQuote, i, q + 3)
-          }
-        case _                                                                                             =>
-      }
-
-      /** A bracket opens an identifier, not after an expression (`a[1]`, `f(x)[1]`) or the array constructor (`ARRAY [1]`). */
-      private def bracketOpens(i: Int): Boolean =
-        !identAt(i - 1) && !charAt(i - 1, ']') && !charAt(i - 1, ')') && {
-          var j = i - 1
-          while (j >= 0 && sql.charAt(j).isWhitespace) j -= 1
-          !(j < i - 1 && j >= 4 && sql.regionMatches(true, j - 4, "ARRAY", 0, 5) && !identAt(j - 5))
-        }
-
-      /** Finds the dialect quoting that closes at `i`; when several do, the earliest opened, which holds the others. */
-      private def findClosing(i: Int, c: Char): Unit = {
-        closing = -1
-        var kind = 0
-        while (kind < Kinds) {
-          if (opened(kind) >= 0 && i >= bodyFrom(kind) && (closing < 0 || opened(kind) < opened(closing))) {
-            val end = closesAt(kind, i, c)
-            if (end >= 0) {
-              closing = kind
-              closingEnd = end
-            }
-          }
-          kind += 1
-        }
-      }
-
-      /** Where the quoting of `kind` ends when it closes at `i`, else -1. */
-      private def closesAt(kind: Int, i: Int, c: Char): Int = kind match {
-        case Backtick => if (c == '`') i + 1 else -1
-        case Bracket  => if (c == ']') i + 1 else -1
-        case Slashes  => if (c == '\n' || c == '\r') i else -1
-        case Dollar   =>
-          if (c != '$') -1
-          else if (dollarTag.length == 2) { if (charAt(i + 1, '$')) i + 2 else -1 }
-          else if (state == Normal && sql.startsWith(dollarTag, i)) i + dollarTag.length
-          else -1
-        case _        => if (state == Normal && c == qClose && charAt(i + 1, '\'')) i + 2 else -1
-      }
-
-      /** Copies the quoting that closed as written, in place of what was read of it, and returns where to read next. */
-      private def close(): Int = {
-        val from = opened(closing)
-        query.setLength(queryAt(closing))
-        query.append(sql, from, closingEnd)
-        names.dropRightInPlace(names.length - namesAt(closing))
-        name.setLength(0)
-        state = Normal
-        var kind = 0
-        while (kind < Kinds) {
-          if (opened(kind) >= from) drop(kind)
-          kind += 1
-        }
-        closing = -1
-        closingEnd
-      }
-    }
-
-    /** A node of the trie of placeholder names: the next node by character, and the name's group when a name ends here. */
-    private final class TrieNode {
-      var next: java.util.HashMap[Character, TrieNode] = _
-      var group: Int                                   = -1
-    }
-
-    /** The placeholders of one SQL, by name: each name in the order it first appears, with its positions, newest first. The
-      * names are kept in a trie, so building the map and finding a name cost the length of the name, whatever the names are: no
-      * two names are compared and no hash code of a name is used.
-      */
-    private final class Placeholders(placeholders: collection.Seq[String]) extends AbstractMap[String, List[Int]] {
-      private val root       = new TrieNode
-      private val byFirstUse = new ArrayBuffer[String]
-      private val positions  = new ArrayBuffer[List[Int]]
-
-      private def find(key: String, add: Boolean): TrieNode = {
-        var node = root
-        var i    = 0
-        while (node != null && i < key.length) {
-          val c    = Character.valueOf(key.charAt(i))
-          var next = if (node.next == null) null else node.next.get(c)
-          if (next == null && add) {
-            next = new TrieNode
-            if (node.next == null) node.next = new java.util.HashMap[Character, TrieNode]
-            node.next.put(c, next)
-          }
-          node = next
+            name.setLength(0)
+            inCurlyBraces = false
+          } else name.append(c)
           i += 1
+        } else if (c == '{') {
+          inCurlyBraces = true
+          i += 1
+        } else {
+          val end = c match {
+            case '\'' | '"'                     => closedBy(c.toString, i + 1)
+            case '-' if sql.startsWith("--", i) => lineEnd(i + 2)
+            case '/' if sql.startsWith("/*", i) => closedBy("*/", i + 2)
+            case _                              => i + 1
+          }
+          query.append(sql, i, end)
+          i = end
         }
-        node
       }
-
-      private var position = 0
-      while (position < placeholders.length) {
-        val node = find(placeholders(position), add = true)
-        if (node.group < 0) {
-          node.group = byFirstUse.length
-          byFirstUse += placeholders(position)
-          positions += Nil
-        }
-        position += 1
-        positions(node.group) = position :: positions(node.group)
-      }
-
-      override def get(key: String): Option[List[Int]] = {
-        val node = find(key, add = false)
-        if (node == null || node.group < 0) None else Some(positions(node.group))
-      }
-
-      override def iterator: Iterator[(String, List[Int])] = byFirstUse.iterator.zip(positions.iterator)
-      override def size: Int                               = byFirstUse.length
-      override def knownSize: Int                          = byFirstUse.length
-
-      override def removed(key: String): Map[String, List[Int]]                      = Map.from(iterator).removed(key)
-      override def updated[V1 >: List[Int]](key: String, value: V1): Map[String, V1] = Map.from(iterator).updated(key, value)
+      InterpolatorCtx(query.toString, name.toString, n, inCurlyBraces, m)
     }
   }
 
