@@ -21,20 +21,59 @@ object JDBCClient {
         inCurlyBraces: Boolean,
         m: ParamToIndexesMap,
     )
-    private val emptyCtx = InterpolatorCtx("", "", 0, inCurlyBraces = false, Map.empty)
-
     private[this] def putToCtx(ctx: Map[String, List[Int]], name: String, number: Int): Map[String, List[Int]] = {
       val numbers = ctx.getOrElse(name, List.empty[Int])
       ctx ++ Map((name, number :: numbers))
     }
 
-    def interpolate(sql: String): InterpolatorCtx = sql.foldLeft(emptyCtx) {
-      case (ic @ InterpolatorCtx(_, _, _, false, _), '{')    => ic.copy(inCurlyBraces = true)
-      case (InterpolatorCtx(r, curName, n, true, ctx), '}')  =>
-        InterpolatorCtx(s"$r ?", "", n + 1, inCurlyBraces = false, putToCtx(ctx, curName, n + 1))
-      case (ic @ InterpolatorCtx(_, curName, _, true, _), c) => ic.copy(paramName = s"$curName$c")
+    /** One pass over `sql`: string literals `'…'`, quoted identifiers `"…"`, `--` comments up to the end of the line and block
+      * comments up to their first closing marker are copied as written, so a brace inside them is never a placeholder.
+      */
+    def interpolate(sql: String): InterpolatorCtx = {
+      val query         = new java.lang.StringBuilder(sql.length)
+      val name          = new java.lang.StringBuilder
+      var n             = 0
+      var m             = Map.empty[String, List[Int]]
+      var inCurlyBraces = false
 
-      case (ic @ InterpolatorCtx(r, _, _, false, _), c) => ic.copy(queryString = s"$r$c")
+      def closedBy(marker: String, from: Int): Int = sql.indexOf(marker, from) match {
+        case -1  => sql.length
+        case end => end + marker.length
+      }
+
+      def lineEnd(from: Int): Int = {
+        var end = from
+        while (end < sql.length && sql.charAt(end) != '\n' && sql.charAt(end) != '\r') end += 1
+        end
+      }
+
+      var i = 0
+      while (i < sql.length) {
+        val c = sql.charAt(i)
+        if (inCurlyBraces) {
+          if (c == '}') {
+            n += 1
+            m = putToCtx(m, name.toString, n)
+            query.append(" ?")
+            name.setLength(0)
+            inCurlyBraces = false
+          } else name.append(c)
+          i += 1
+        } else if (c == '{') {
+          inCurlyBraces = true
+          i += 1
+        } else {
+          val end = c match {
+            case '\'' | '"'                     => closedBy(c.toString, i + 1)
+            case '-' if sql.startsWith("--", i) => lineEnd(i + 2)
+            case '/' if sql.startsWith("/*", i) => closedBy("*/", i + 2)
+            case _                              => i + 1
+          }
+          query.append(sql, i, end)
+          i = end
+        }
+      }
+      InterpolatorCtx(query.toString, name.toString, n, inCurlyBraces, m)
     }
   }
 
