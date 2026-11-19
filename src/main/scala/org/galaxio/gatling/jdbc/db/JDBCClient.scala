@@ -6,8 +6,10 @@ import statements._
 
 import java.sql.{CallableStatement, Connection, PreparedStatement, ResultSet, Statement}
 import java.util.concurrent.{ExecutorService, TimeUnit}
+import scala.collection.immutable.TreeMap
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
+import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 import scala.util.{Try, Using}
 
@@ -21,30 +23,111 @@ object JDBCClient {
         inCurlyBraces: Boolean,
         m: ParamToIndexesMap,
     )
-    private[this] def putToCtx(ctx: Map[String, List[Int]], name: String, number: Int): Map[String, List[Int]] = {
-      val numbers = ctx.getOrElse(name, List.empty[Int])
-      ctx ++ Map((name, number :: numbers))
-    }
 
-    /** One pass over `sql`: string literals `'…'`, quoted identifiers `"…"`, `--` comments up to the end of the line and block
-      * comments up to their first closing marker are copied as written, so a brace inside them is never a placeholder.
+    /** One pass over `sql`. String literals `'…'` (in `E'…'` a backslash escapes), quoted identifiers `"…"`, `--` comments up
+      * to the end of the line and block comments up to their first closing marker are copied as written, so a brace inside them
+      * is never a placeholder. Dialect quoting (backtick and bracket identifiers, dollar-quoted and `q'…'` strings, `//`
+      * comments) is copied as written only when it closes before the next brace: a quote inside it then opens nothing, and a
+      * brace inside it stays a placeholder, as before.
       */
     def interpolate(sql: String): InterpolatorCtx = {
       val query         = new java.lang.StringBuilder(sql.length)
       val name          = new java.lang.StringBuilder
+      val indexes       = new java.util.HashMap[String, List[Int]]
       var n             = 0
-      var m             = Map.empty[String, List[Int]]
       var inCurlyBraces = false
+      var braceAt       = -1 // the first brace at or after the position last asked for
+      var dialectFrom   = 0  // dialect quoting is looked for from here on: before it, one did not close before a brace
+
+      def charAt(at: Int, c: Char): Boolean = at >= 0 && at < sql.length && sql.charAt(at) == c
+
+      def identAt(at: Int): Boolean = at >= 0 && {
+        val c = sql.charAt(at)
+        c.isLetterOrDigit || c == '_' || c == '$' || c >= '\u0080'
+      }
+
+      def nextBrace(from: Int): Int = {
+        if (braceAt < from) {
+          braceAt = from
+          while (braceAt < sql.length && sql.charAt(braceAt) != '{' && sql.charAt(braceAt) != '}') braceAt += 1
+        }
+        braceAt
+      }
 
       def closedBy(marker: String, from: Int): Int = sql.indexOf(marker, from) match {
         case -1  => sql.length
         case end => end + marker.length
       }
 
-      def lineEnd(from: Int): Int = {
+      def lineEnd(from: Int, until: Int): Int = {
         var end = from
-        while (end < sql.length && sql.charAt(end) != '\n' && sql.charAt(end) != '\r') end += 1
+        while (end < until && sql.charAt(end) != '\n' && sql.charAt(end) != '\r') end += 1
         end
+      }
+
+      def escapeStringEnd(from: Int): Int = {
+        var end    = from
+        var closed = false
+        while (!closed && end < sql.length) sql.charAt(end) match {
+          case '\\'                          => end += 2
+          case '\'' if charAt(end + 1, '\'') => end += 2
+          case '\''                          => closed = true; end += 1
+          case _                             => end += 1
+        }
+        math.min(end, sql.length)
+      }
+
+      /** The end of the dialect quoting that opens at `i` and closes before the next brace, else `i + 1`. */
+      def dialectEnd(i: Int): Int = {
+        val until = nextBrace(i + 1)
+
+        def closedAt(closer: Int, length: Int): Int =
+          if (closer < until) closer + length
+          else {
+            dialectFrom = until
+            i + 1
+          }
+
+        sql.charAt(i) match {
+          case '`'                                                                  =>
+            var j = i + 1
+            while (j < until && sql.charAt(j) != '`') j += 1
+            closedAt(j, 1)
+          case '[' if !identAt(i - 1) && !charAt(i - 1, ']') && !charAt(i - 1, ')') =>
+            var j = i + 1
+            while (j < until && !(sql.charAt(j) == ']' && !charAt(j + 1, ']'))) j += (if (sql.charAt(j) == ']') 2 else 1)
+            closedAt(j, 1)
+          case '$' if !identAt(i - 1)                                               =>
+            var k = i + 1
+            if (k < sql.length && (sql.charAt(k).isLetter || sql.charAt(k) == '_' || sql.charAt(k) >= '\u0080'))
+              while (k < sql.length && identAt(k) && sql.charAt(k) != '$') k += 1
+            if (!charAt(k, '$')) i + 1
+            else {
+              val tag = sql.substring(i, k + 1)
+              var j   = k + 1
+              while (j < until && !(sql.charAt(j) == '$' && sql.startsWith(tag, j))) j += 1
+              closedAt(j, tag.length)
+            }
+          case '/' if charAt(i + 1, '/')                                            =>
+            val end = lineEnd(i + 2, until)
+            if (until == sql.length) end else closedAt(end, 0)
+          case 'q' | 'Q' | 'n' | 'N' if !identAt(i - 1)                             =>
+            val q    = if (sql.charAt(i) == 'n' || sql.charAt(i) == 'N') i + 1 else i
+            val open = if (q + 2 < sql.length) sql.charAt(q + 2) else ' '
+            if (!(charAt(q, 'q') || charAt(q, 'Q')) || !charAt(q + 1, '\'') || open.isWhitespace || "{}'".contains(open)) i + 1
+            else {
+              val close = open match {
+                case '[' => ']'
+                case '(' => ')'
+                case '<' => '>'
+                case _   => open
+              }
+              var j     = q + 3
+              while (j < until && !(sql.charAt(j) == close && charAt(j + 1, '\''))) j += 1
+              closedAt(j, 2)
+            }
+          case _                                                                    => i + 1
+        }
       }
 
       var i = 0
@@ -53,7 +136,8 @@ object JDBCClient {
         if (inCurlyBraces) {
           if (c == '}') {
             n += 1
-            m = putToCtx(m, name.toString, n)
+            val key = name.toString
+            indexes.put(key, n :: indexes.getOrDefault(key, Nil))
             query.append(" ?")
             name.setLength(0)
             inCurlyBraces = false
@@ -64,16 +148,19 @@ object JDBCClient {
           i += 1
         } else {
           val end = c match {
-            case '\'' | '"'                     => closedBy(c.toString, i + 1)
-            case '-' if sql.startsWith("--", i) => lineEnd(i + 2)
-            case '/' if sql.startsWith("/*", i) => closedBy("*/", i + 2)
-            case _                              => i + 1
+            case '\'' | '"'                                                        => closedBy(c.toString, i + 1)
+            case '-' if charAt(i + 1, '-')                                         => lineEnd(i + 2, sql.length)
+            case '/' if charAt(i + 1, '*')                                         => closedBy("*/", i + 2)
+            case 'E' | 'e' if charAt(i + 1, '\'') && !identAt(i - 1)               => escapeStringEnd(i + 2)
+            case '`' | '[' | '$' | '/' | 'q' | 'Q' | 'n' | 'N' if i >= dialectFrom => dialectEnd(i)
+            case _                                                                 => i + 1
           }
           query.append(sql, i, end)
           i = end
         }
       }
-      InterpolatorCtx(query.toString, name.toString, n, inCurlyBraces, m)
+      // A tree, not a hash map: names chosen to share one hash code cannot make building it quadratic.
+      InterpolatorCtx(query.toString, name.toString, n, inCurlyBraces, TreeMap.from(indexes.asScala))
     }
   }
 

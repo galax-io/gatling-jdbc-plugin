@@ -133,6 +133,38 @@ class InterpolatorLiteralsAndCommentsSpec extends AnyFlatSpec with Matchers with
     )
   }
 
+  behavior of "FR-002: the interpolator next to dialect quoting"
+
+  /** The result of a SQL whose only placeholder is `{id}`, written in it once. */
+  private def boundOnce(query: String): InterpolatorCtx =
+    InterpolatorCtx(query, "", 1, inCurlyBraces = false, Map("id" -> List(1)))
+
+  it should "bind the placeholder after an Oracle q-quoted literal holding an apostrophe, whatever the prefix case" in {
+    Interpolator.interpolate("SELECT q'[it's fine]', {id} FROM DUAL") shouldBe boundOnce("SELECT q'[it's fine]',  ? FROM DUAL")
+    Interpolator.interpolate("SELECT nQ'(it's)', {id} FROM DUAL") shouldBe boundOnce("SELECT nQ'(it's)',  ? FROM DUAL")
+  }
+
+  it should "bind the placeholder between what PostgreSQL reads as two literals of a type named q" in {
+    Interpolator.interpolate("SELECT q'[x', {id}, ']'") shouldBe boundOnce("SELECT q'[x',  ?, ']'")
+  }
+
+  it should "bind the placeholder between two PostgreSQL operators holding a backtick" in {
+    Interpolator.interpolate("SELECT a <`> {id} <`> b") shouldBe boundOnce("SELECT a <`>  ? <`> b")
+  }
+
+  it should "bind the placeholder between two MariaDB columns named with dollars" in {
+    Interpolator.interpolate("SELECT $col$, {id}, $col$ FROM t") shouldBe boundOnce("SELECT $col$,  ?, $col$ FROM t")
+  }
+
+  it should "bind the placeholder after a plain literal that follows a type name ending in a combining mark and e" in {
+    val typeName = s"x${0x301.toChar}e"
+    Interpolator.interpolate(s"SELECT $typeName'C:\\', {id}") shouldBe boundOnce(s"SELECT $typeName'C:\\',  ?")
+  }
+
+  it should "bind the placeholder after an array subscript whose literal holds a bracket" in {
+    Interpolator.interpolate("SELECT ARRAY['a]b', {id}]") shouldBe boundOnce("SELECT ARRAY['a]b',  ?]")
+  }
+
   behavior of "FR-001: JDBCClient on H2"
 
   it should "return a JSON literal of a select without parameters as written" in {

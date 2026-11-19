@@ -6,6 +6,7 @@ import io.gatling.core.action.builder.ActionBuilder
 import io.gatling.core.session.Expression
 import io.gatling.core.structure.ScenarioContext
 import org.galaxio.gatling.jdbc.JdbcCheck
+import org.galaxio.gatling.jdbc.db.JDBCClient.Interpolator
 
 object actions {
   case class DBBaseAction(requestName: Expression[String]) {
@@ -68,8 +69,6 @@ object actions {
     * reaching a running simulation (spec 005 FR-004/FR-010).
     */
   private object WhereClauseGuard {
-    private val Placeholder = "\\{([^{}]*)\\}".r
-
     def requireNoGatlingEl(whereClause: String): Unit =
       require(
         !whereClause.contains("#{"),
@@ -78,7 +77,8 @@ object actions {
       )
 
     def requireParamsBindable(whereClause: String, paramNames: Seq[String], setNames: Seq[String]): Unit = {
-      val placeholders = Placeholder.findAllMatchIn(whereClause).map(_.group(1)).toSet
+      // the placeholders the interpolator binds: braces inside literals and comments are not among them
+      val placeholders = Interpolator.interpolate(whereClause).m.keySet
       val duplicates   = paramNames.diff(paramNames.distinct).distinct
       require(duplicates.isEmpty, s"Duplicate where(...) parameter name(s): ${duplicates.mkString(", ")}")
       val collisions   = paramNames.filter(setNames.contains)
