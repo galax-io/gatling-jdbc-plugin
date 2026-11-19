@@ -82,6 +82,11 @@ class InterpolatorLiteralsAndCommentsSpec extends AnyFlatSpec with Matchers with
       InterpolatorCtx("SELECT 'a--{b}' || 'c/*{d}' ||  ?", "", 1, inCurlyBraces = false, Map("e" -> List(1)))
   }
 
+  it should "end a block comment at its first */, a nested /* opening nothing" in {
+    Interpolator.interpolate("SELECT 1 /* a /* {b} */ {c} */") shouldBe
+      InterpolatorCtx("SELECT 1 /* a /* {b} */  ? */", "", 1, inCurlyBraces = false, Map("c" -> List(1)))
+  }
+
   behavior of "FR-001, FR-002: the interpolator on SQL mixing zones and placeholders"
 
   Seq("LF" -> "\n", "CR" -> "\r").foreach { case (label, eol) =>
