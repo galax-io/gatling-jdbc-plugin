@@ -1,34 +1,31 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.0 → 1.1.0
-Bump rationale: MINOR — Principle I materially expanded with a bounded
-"corruption & injection carve-out" permitting defect-driven runtime-behavior
-changes in MINOR releases under four explicit conditions. No principle removed
-or redefined; the default (behavior changes ⇒ MAJOR) stands.
+Version change: 1.1.0 → 2.0.0
+Bump rationale: MAJOR — release governance redefined to follow the backlog
+constitution (galax-io/galaxio-sdlc-backlog, Principle I): this repository
+holds no milestone, its pull requests carry none, and the release sets the
+version. The rules removed contradicted that constitution, which ranks
+above this one (backlog Precedence).
 
 Modified principles:
-- I. Backward Compatibility (NON-NEGOTIABLE) — unchanged title; added carve-out
-  bullet codifying the maintainer decision of 2026-07-22 (milestone 8, spec
-  005-injection-secrets-null: #93 NULL-sentinel removal, #125 EL-in-WHERE
-  rejection ship as v1.5.0 minor).
+- IV. Spec-Driven, Semantic Delivery — commit subjects drive the changelog,
+  not the version; the milestone-before-merge rule removed.
+Modified sections:
+- Release Discipline — the version is set by the release (`vX.Y.0`, a patch
+  `vX.Y.Z` on `release/X.Y.0`), not by commit types; the release-milestone and
+  linkage-guard rule removed (the linkage gate no longer exists).
+- Governance — the backlog constitution named first in the precedence.
 
 Added sections: none
 Removed sections: none
 
 Templates alignment:
-- .specify/templates/plan-template.md   ✅ compatible — "Constitution Check" is a
-  dynamic per-feature gate; carve-out is evaluated per feature, no hardcode.
-- .specify/templates/spec-template.md   ✅ compatible — no mandatory-section change.
-- .specify/templates/tasks-template.md  ✅ compatible — TDD-first ordering already
-  satisfies carve-out condition (d).
-- specs/005-injection-secrets-null/plan.md ✅ updated in the same change —
-  Constitution Check row I and Complexity Tracking now cite the carve-out.
-- AGENTS.md (runtime guidance)          ✅ consistent — its "preserve backward
-  compat" boundary remains the default; the constitution supersedes on the
-  bounded exception (see Governance precedence). No AGENTS.md edit required.
-
-Follow-up TODOs: none.
+- .specify/templates/*.md  ✅ compatible — no template names milestones or
+  the version rule.
+- AGENTS.md                ⚠ "Commits & PRs" (Conventional Commits guide the
+  version) and "Release Process → Rules" (version from commits) still say the
+  old rule; they are fixed from the backlog with the shared AGENTS.md sections.
 -->
 
 # Gatling JDBC Plugin Constitution
@@ -105,10 +102,10 @@ Work is planned as specs and delivered as small, semantic, traceable units.
 - Spec-first: `specs/NNN-<feature>/` artifacts land in their own `docs(speckit): …` commit
   BEFORE any `feat`/`fix`; spec artifacts are never folded into implementation commits.
 - 1 tracked issue = 1 Conventional Commit (`type(scope): … (#NNN)`), green on its own.
-- 1 concern per PR; Conventional Commit subjects drive the changelog and the version
-  (`feat` → minor, `!`/`BREAKING CHANGE` → major, else patch).
-- Every PR and every issue it closes MUST be tied to the active milestone before merge;
-  no milestone = do not merge.
+- 1 concern per PR; Conventional Commit subjects drive the changelog.
+- This repository holds no milestone and its PRs carry none: a release is a business
+  milestone of `galax-io/galaxio-sdlc-backlog`, and a PR of a feature links it with
+  `Part of galax-io/galaxio-sdlc-backlog#<feature>`.
 
 **Rationale**: Traceable, single-concern history makes the automated changelog and
 tag-driven release trustworthy and keeps review scoped.
@@ -144,18 +141,19 @@ obscures blocking or resource behavior is a liability, not an asset.
 
 - Trunk-based with `release/*` branches cut from `main`. Releases are manual and tag-driven:
   CI only tests; `release.yml` runs only on `v*` tags.
-- The version comes from the tag (dynver) and MUST be chosen from the Conventional Commits
-  since the last tag (`feat` → minor, `!`/`BREAKING CHANGE` → major, else patch); a change
-  shipped under the Principle I carve-out is a `fix` and never forces MAJOR by itself.
+- The version comes from the tag (dynver) and is set by the release, not by commit types:
+  the next minor `vX.Y.0` for a release of `main`, a patch `vX.Y.Z` on `release/X.Y.0` for
+  a fix of a released version. A change shipped under the Principle I carve-out is a
+  `fix` and never forces MAJOR by itself.
 - Tags are allowed only on `main` or `release/*`; stray tags are rejected.
 - A version number is NEVER reused and a published release tag is NEVER deleted.
-- A release milestone is tag-ready only when every issue in it is closed and every PR merged;
-  the linkage guard gates the release tag until the milestone passes.
 
 ## Governance
 
 This constitution supersedes ad-hoc practice. When guidance conflicts, the order of
-precedence is: this constitution, then `AGENTS.md`, then other docs.
+precedence is: the constitution of `galax-io/galaxio-sdlc-backlog`, this constitution, then
+`AGENTS.md`, then other docs. A rule here that contradicts the backlog constitution is a
+defect of this one, fixed from the backlog.
 
 - Amendments MUST be made by editing this file, MUST state the version bump and rationale,
   and MUST propagate to dependent templates (`plan`, `spec`, `tasks`) in the same change.
@@ -167,4 +165,4 @@ precedence is: this constitution, then `AGENTS.md`, then other docs.
 - `AGENTS.md` remains the day-to-day runtime development guide; it MUST stay consistent with
   this constitution, and a divergence is a defect to fix in the constitution or in `AGENTS.md`.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-12 | **Last Amended**: 2026-07-22
+**Version**: 2.0.0 | **Ratified**: 2026-07-12 | **Last Amended**: 2026-11-27
